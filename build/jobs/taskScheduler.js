@@ -42,7 +42,7 @@ export function initCron() {
                         // ❌ Expire if overdue
                         if (due < now) {
                             subtask.status = SubtaskStatus.Expired;
-                            subtask.completedAt = null;
+                            subtask.completedAt = due;
                             updated = true;
                         }
                         else {
