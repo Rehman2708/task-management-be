@@ -1,25 +1,28 @@
 import { Router } from "express";
 import Task from "../models/Task.js";
+import User from "../models/User.js";
 
 const router = Router();
 
 /**
  * Get active tasks (home)
  */
-router.get("/", async (req, res) => {
+router.get("/:ownerUserId", async (req, res) => {
   try {
-    const { assignedTo, ownerUserId } = req.query as {
-      assignedTo?: string;
-      ownerUserId?: string;
-    };
-
+    const { ownerUserId } = req.params;
     const filter: any = { status: "Active" };
-    if (assignedTo) filter.assignedTo = assignedTo;
-    if (ownerUserId) filter.ownerUserId = ownerUserId;
+    if (ownerUserId) {
+      const owner = await User.findOne({ userId: ownerUserId }).lean();
+      const partnerUserId = owner?.partnerUserId;
+      filter.ownerUserId = {
+        $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
+      };
+    }
 
     const list = await Task.find(filter)
       .sort({ nextDue: 1, updatedAt: -1 })
       .lean();
+
     res.json(list);
   } catch (err: any) {
     console.error("Error fetching active tasks:", err);
@@ -30,13 +33,22 @@ router.get("/", async (req, res) => {
 /**
  * Get task history
  */
-router.get("/history", async (req, res) => {
+router.get("/history/:ownerUserId", async (req, res) => {
   try {
-    const { ownerUserId } = req.query as { ownerUserId?: string };
+    const { ownerUserId } = req.params;
+
     const filter: any = { status: { $in: ["Completed", "Expired"] } };
-    if (ownerUserId) filter.ownerUserId = ownerUserId;
+
+    if (ownerUserId) {
+      const owner = await User.findOne({ userId: ownerUserId }).lean();
+      const partnerUserId = owner?.partnerUserId;
+      filter.ownerUserId = {
+        $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
+      };
+    }
 
     const list = await Task.find(filter).sort({ updatedAt: -1 }).lean();
+
     res.json(list);
   } catch (err: any) {
     console.error("Error fetching task history:", err);

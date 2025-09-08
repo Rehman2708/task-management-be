@@ -1,16 +1,22 @@
 import { Router } from "express";
 import Notes from "../models/Notes.js";
+import User from "../models/User.js";
 const router = Router();
 /**
  * Get all notes (optionally by user)
  * Optional query: ?userId=<userId>
  */
-router.get("/", async (req, res) => {
+router.get("/:ownerUserId", async (req, res) => {
     try {
-        const { userId } = req.query;
+        const { ownerUserId } = req.params;
         const filter = {};
-        if (userId)
-            filter.createdBy = userId;
+        if (ownerUserId) {
+            const owner = await User.findOne({ userId: ownerUserId }).lean();
+            const partnerUserId = owner?.partnerUserId;
+            filter.createdBy = {
+                $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
+            };
+        }
         const notes = await Notes.find(filter).sort({ createdAt: -1 }).lean();
         res.json(notes);
     }
