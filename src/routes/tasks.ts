@@ -98,7 +98,7 @@ router.post("/", async (req, res) => {
 /**
  * Get task by ID
  */
-router.get("/:id", async (req, res) => {
+router.get("/task/:id", async (req, res) => {
   try {
     const t = await Task.findById(req.params.id).lean();
     if (!t) return res.status(404).json({ error: "Task not found" });
