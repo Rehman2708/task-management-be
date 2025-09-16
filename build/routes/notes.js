@@ -17,7 +17,10 @@ router.get("/:ownerUserId", async (req, res) => {
                 $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
             };
         }
-        const notes = await Notes.find(filter).sort({ createdAt: -1 }).lean();
+        // Sort: pinned notes first, then by updatedAt descending
+        const notes = await Notes.find(filter)
+            .sort({ pinned: -1, createdAt: -1 })
+            .lean();
         res.json(notes);
     }
     catch (err) {
@@ -79,6 +82,26 @@ router.delete("/:id", async (req, res) => {
     catch (err) {
         console.error("Error deleting note:", err);
         res.status(500).json({ error: err.message || "Failed to delete note" });
+    }
+});
+/**
+ * Pin or unpin a note
+ * Body: { pinned: boolean }
+ */
+router.patch("/pin/:id", async (req, res) => {
+    try {
+        const { pinned } = req.body;
+        if (typeof pinned !== "boolean") {
+            return res.status(400).json({ error: "pinned (boolean) is required" });
+        }
+        const updatedNote = await Notes.findByIdAndUpdate(req.params.id, { pinned, updatedAt: new Date() }, { new: true });
+        if (!updatedNote)
+            return res.status(404).json({ error: "Note not found" });
+        res.json(updatedNote);
+    }
+    catch (err) {
+        console.error("Error pinning/unpinning note:", err);
+        res.status(500).json({ error: err.message || "Failed to pin/unpin note" });
     }
 });
 export default router;
