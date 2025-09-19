@@ -91,6 +91,7 @@ router.post("/", async (req, res) => {
 
     const t = await Task.create({
       title: payload.title,
+      image: payload.image || "",
       description: payload.description || "",
       ownerUserId: payload.ownerUserId,
       createdBy: payload.createdBy || payload.ownerUserId,

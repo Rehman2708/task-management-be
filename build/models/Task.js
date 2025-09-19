@@ -53,6 +53,7 @@ const TemplateSchema = new mongoose.Schema({
 // Main Task Schema
 const TaskSchema = new mongoose.Schema({
     title: { type: String, required: true },
+    image: { type: String, required: false },
     description: { type: String, default: "" },
     ownerUserId: { type: String, required: true }, // creator/owner
     createdBy: { type: String, default: null },
