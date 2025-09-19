@@ -37,7 +37,8 @@ async function formatUserResponse(
  */
 router.post("/register", async (req, res) => {
   try {
-    const { name, userId, partnerUserId, password } = req.body || {};
+    const { name, userId, partnerUserId, password, notificationToken } =
+      req.body || {};
 
     if (!name || !userId || !password) {
       return res
@@ -63,6 +64,7 @@ router.post("/register", async (req, res) => {
       userId,
       partnerUserId: partner ? partner.userId : null,
       password,
+      notificationToken,
     });
 
     if (partner) {
@@ -85,7 +87,7 @@ router.post("/register", async (req, res) => {
  */
 router.post("/login", async (req, res) => {
   try {
-    const { userId, password } = req.body || {};
+    const { userId, password, notificationToken } = req.body || {};
 
     if (!userId || !password) {
       return res
@@ -97,7 +99,10 @@ router.post("/login", async (req, res) => {
     if (!u) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
-
+    if (notificationToken) {
+      u.notificationToken = notificationToken;
+      await u.save();
+    }
     res.json({
       message: "Login successful",
       user: await formatUserResponse(u),
@@ -159,6 +164,35 @@ router.get("/:userId", async (req, res) => {
     });
   } catch (err) {
     console.error("Get user error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * 🟢 Logout API (Clear Notification Token)
+ */
+router.post("/logout", async (req, res) => {
+  try {
+    const { userId } = req.body || {};
+
+    if (!userId) {
+      return res.status(400).json({ message: "userId is required" });
+    }
+
+    const u = await User.findOne({ userId });
+    if (!u) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    u.notificationToken = null;
+    await u.save();
+
+    res.json({
+      message: "Logout successful, notification token cleared",
+      user: await formatUserResponse(u),
+    });
+  } catch (err) {
+    console.error("Logout error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

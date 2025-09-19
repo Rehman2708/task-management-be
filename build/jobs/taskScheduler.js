@@ -1,26 +1,25 @@
 import cron from "node-cron";
 import Task from "../models/Task.js";
-import Token from "../models/Token.js";
-import { sendExpoPush } from "../routes/notification.js";
 import { AssignedTo, Frequency, SubtaskStatus, TaskStatus, } from "../enum/task.js";
+import { sendExpoPush } from "../routes/notifications.js";
+import { getOwnerAndPartner } from "../helper.js";
 // Helper to get tokens for assignment
-async function getTokens(assignedTo) {
+async function getTokens(user, assignedTo) {
     const tokens = [];
+    const { owner, partner } = await getOwnerAndPartner(user);
     if (assignedTo === AssignedTo.Me || assignedTo === AssignedTo.Both) {
-        const me = await Token.findOne({ owner: AssignedTo.Me });
-        if (me?.token)
-            tokens.push(me.token);
+        if (owner?.notificationToken)
+            tokens.push(owner.notificationToken);
     }
     if (assignedTo === AssignedTo.Partner || assignedTo === AssignedTo.Both) {
-        const partner = await Token.findOne({ owner: AssignedTo.Partner });
-        if (partner?.token)
-            tokens.push(partner.token);
+        if (partner?.notificationToken)
+            tokens.push(partner.notificationToken);
     }
     return tokens;
 }
 // Main cron job function
 export function initCron() {
-    cron.schedule("* * * * *", async () => {
+    cron.schedule("*/5 * * * *", async () => {
         try {
             const now = new Date();
             const tasks = await Task.find({ status: TaskStatus.Active });
@@ -34,10 +33,8 @@ export function initCron() {
                         const diffSeconds = (due.getTime() - now.getTime()) / 1000;
                         // ⏰ Send reminders
                         if ([86400, 7200, 1800].includes(Math.round(diffSeconds))) {
-                            const tokens = await getTokens(task.assignedTo);
-                            for (const tkn of tokens) {
-                                await sendExpoPush(tkn, `Reminder: ${task.title}`, `Subtask "${subtask.title}" is due at ${due.toLocaleString()}`);
-                            }
+                            const tokens = await getTokens(task.createdBy, task.assignedTo);
+                            await sendExpoPush(tokens, `Reminder: ${task.title}`, `Subtask "${subtask.title}" is due at ${due.toLocaleString()}`);
                         }
                         // ❌ Expire if overdue
                         if (due < now) {

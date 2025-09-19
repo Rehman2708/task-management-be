@@ -1,6 +1,8 @@
 import { Router } from "express";
 import Notes from "../models/Notes.js";
 import User from "../models/User.js";
+import { sendExpoPush } from "./notifications.js";
+import { getOwnerAndPartner } from "../helper.js";
 const router = Router();
 /**
  * Get all notes (optionally by user)
@@ -41,6 +43,10 @@ router.post("/", async (req, res) => {
                 .json({ error: "title, note and createdBy are required" });
         }
         const newNote = await Notes.create({ title, note, createdBy });
+        const { owner, partner } = await getOwnerAndPartner(createdBy);
+        if (partner?.notificationToken) {
+            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`);
+        }
         res.status(201).json(newNote);
     }
     catch (err) {
@@ -62,6 +68,12 @@ router.put("/:id", async (req, res) => {
         const updatedNote = await Notes.findByIdAndUpdate(req.params.id, { title, note, updatedAt: new Date() }, { new: true });
         if (!updatedNote)
             return res.status(404).json({ error: "Note not found" });
+        const { owner, partner } = await getOwnerAndPartner(updatedNote.createdBy);
+        if (owner?.notificationToken) {
+            await sendExpoPush(partner?.notificationToken
+                ? [partner.notificationToken, owner.notificationToken]
+                : [owner.notificationToken], `Note: ${title.trim()}`, `${updatedNote.title.trim()} note has been updated!`);
+        }
         res.json(updatedNote);
     }
     catch (err) {
@@ -77,6 +89,10 @@ router.delete("/:id", async (req, res) => {
         const deletedNote = await Notes.findByIdAndDelete(req.params.id);
         if (!deletedNote)
             return res.status(404).json({ error: "Note not found" });
+        const { owner, partner } = await getOwnerAndPartner(deletedNote.createdBy);
+        if (owner?.notificationToken) {
+            await sendExpoPush([owner.notificationToken], `Note deleted ❌`, `${deletedNote.title.trim()} has been deleted!`);
+        }
         res.json({ message: "Note deleted successfully" });
     }
     catch (err) {
@@ -94,9 +110,21 @@ router.patch("/pin/:id", async (req, res) => {
         if (typeof pinned !== "boolean") {
             return res.status(400).json({ error: "pinned (boolean) is required" });
         }
-        const updatedNote = await Notes.findByIdAndUpdate(req.params.id, { pinned, updatedAt: new Date() }, { new: true });
+        const updatedNote = await Notes.findByIdAndUpdate(req.params.id, { pinned }, { new: true });
         if (!updatedNote)
             return res.status(404).json({ error: "Note not found" });
+        const action = updatedNote.pinned ? "pinned" : "unpinned";
+        const owner = await User.findOne({
+            userId: updatedNote.createdBy,
+        }).lean();
+        const partner = await User.findOne({
+            userId: owner?.partnerUserId,
+        }).lean();
+        if (owner?.notificationToken) {
+            await sendExpoPush(partner?.notificationToken
+                ? [partner.notificationToken, owner.notificationToken]
+                : [owner.notificationToken], `Note: ${updatedNote.title.trim()}`, `This note has been ${action}!`);
+        }
         res.json(updatedNote);
     }
     catch (err) {

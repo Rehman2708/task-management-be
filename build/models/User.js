@@ -4,5 +4,6 @@ const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     partnerUserId: { type: String, default: null },
     password: { type: String, required: true },
+    notificationToken: { type: String, required: false },
 }, { timestamps: true });
 export default mongoose.model("User", UserSchema);

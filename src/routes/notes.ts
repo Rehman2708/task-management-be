@@ -1,6 +1,8 @@
 import { Router } from "express";
 import Notes from "../models/Notes.js";
-import User from "../models/User.js";
+import User, { IUser } from "../models/User.js";
+import { sendExpoPush } from "./notifications.js";
+import { getOwnerAndPartner } from "../helper.js";
 
 const router = Router();
 
@@ -47,6 +49,14 @@ router.post("/", async (req, res) => {
     }
 
     const newNote = await Notes.create({ title, note, createdBy });
+    const { owner, partner } = await getOwnerAndPartner(createdBy);
+    if (partner?.notificationToken) {
+      await sendExpoPush(
+        [partner.notificationToken],
+        `Note: ${title.trim()}`,
+        `${owner?.name?.trim()} created a note!`
+      );
+    }
     res.status(201).json(newNote);
   } catch (err: any) {
     console.error("Error creating note:", err);
@@ -71,6 +81,16 @@ router.put("/:id", async (req, res) => {
     );
 
     if (!updatedNote) return res.status(404).json({ error: "Note not found" });
+    const { owner, partner } = await getOwnerAndPartner(updatedNote.createdBy);
+    if (owner?.notificationToken) {
+      await sendExpoPush(
+        partner?.notificationToken
+          ? [partner.notificationToken, owner.notificationToken]
+          : [owner.notificationToken],
+        `Note: ${title.trim()}`,
+        `${updatedNote.title.trim()} note has been updated!`
+      );
+    }
     res.json(updatedNote);
   } catch (err: any) {
     console.error("Error updating note:", err);
@@ -85,6 +105,14 @@ router.delete("/:id", async (req, res) => {
   try {
     const deletedNote = await Notes.findByIdAndDelete(req.params.id);
     if (!deletedNote) return res.status(404).json({ error: "Note not found" });
+    const { owner, partner } = await getOwnerAndPartner(deletedNote.createdBy);
+    if (owner?.notificationToken) {
+      await sendExpoPush(
+        [owner.notificationToken],
+        `Note deleted ❌`,
+        `${deletedNote.title.trim()} has been deleted!`
+      );
+    }
     res.json({ message: "Note deleted successfully" });
   } catch (err: any) {
     console.error("Error deleting note:", err);
@@ -105,11 +133,27 @@ router.patch("/pin/:id", async (req, res) => {
 
     const updatedNote = await Notes.findByIdAndUpdate(
       req.params.id,
-      { pinned, updatedAt: new Date() },
+      { pinned },
       { new: true }
     );
 
     if (!updatedNote) return res.status(404).json({ error: "Note not found" });
+    const action = updatedNote.pinned ? "pinned" : "unpinned";
+    const owner: IUser | null = await User.findOne({
+      userId: updatedNote.createdBy,
+    }).lean();
+    const partner: IUser | null = await User.findOne({
+      userId: owner?.partnerUserId,
+    }).lean();
+    if (owner?.notificationToken) {
+      await sendExpoPush(
+        partner?.notificationToken
+          ? [partner.notificationToken, owner.notificationToken]
+          : [owner.notificationToken],
+        `Note: ${updatedNote.title.trim()}`,
+        `This note has been ${action}!`
+      );
+    }
 
     res.json(updatedNote);
   } catch (err: any) {
