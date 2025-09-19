@@ -3,6 +3,7 @@ import Task from "../models/Task.js";
 import User from "../models/User.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { sendExpoPush } from "./notifications.js";
+import { TaskStatus } from "../enum/task.js";
 const router = Router();
 /**
  * Utility: resolve display name
@@ -91,7 +92,11 @@ router.post("/", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(t.createdBy);
         const creatorName = await getDisplayName(t.createdBy);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Task: ${t.title.trim()}`, `${creatorName} created a new task ${t.assignedTo !== "Me" ? "for you" : ""}`);
+            await sendExpoPush([partner.notificationToken], `Task: ${t.title.trim()}`, `${creatorName} created a new task ${t.assignedTo !== "Me" ? "for you" : ""}`, {
+                type: "task",
+                taskId: t._id,
+                isActive: t.status === TaskStatus.Active,
+            });
         }
         res.status(201).json(t);
     }
@@ -131,7 +136,11 @@ router.put("/:id", async (req, res) => {
         if (owner?.notificationToken || partner?.notificationToken) {
             await sendExpoPush(partner?.notificationToken
                 ? [partner.notificationToken, owner.notificationToken]
-                : [owner.notificationToken], `Task: ${task.title.trim()}`, `${updaterName} updated this task`);
+                : [owner.notificationToken], `Task: ${task.title.trim()}`, `${updaterName} updated this task`, {
+                type: "task",
+                taskId: task._id,
+                isActive: task.status === TaskStatus.Active,
+            });
         }
         res.json(task);
     }
@@ -182,7 +191,11 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(userId);
         const actorName = await getDisplayName(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner?.notificationToken], `Task: ${task.title.trim()}`, `${actorName} ${status === "Completed" ? "completed" : "reopened"} "${subtask.title}"`);
+            await sendExpoPush([partner?.notificationToken], `Task: ${task.title.trim()}`, `${actorName} ${status === "Completed" ? "completed" : "reopened"} "${subtask.title}"`, {
+                type: "task",
+                taskId: task._id,
+                isActive: task.status === TaskStatus.Active,
+            });
         }
         res.json(task);
     }
@@ -208,7 +221,11 @@ router.post("/:id/comment", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(by);
         const commenterName = await getDisplayName(by);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner?.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented: "${text}"`);
+            await sendExpoPush([partner?.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented: "${text}"`, {
+                type: "task",
+                taskId: task._id,
+                isActive: task.status === TaskStatus.Active,
+            });
         }
         res.json(task);
     }
@@ -237,7 +254,11 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(userId);
         const commenterName = await getDisplayName(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented on "${subtask.title}": "${text}"`);
+            await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented on "${subtask.title}": "${text}"`, {
+                type: "task",
+                taskId: task._id,
+                isActive: task.status === TaskStatus.Active,
+            });
         }
         res.json(task);
     }

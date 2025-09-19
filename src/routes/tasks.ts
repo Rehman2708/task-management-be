@@ -3,6 +3,7 @@ import Task from "../models/Task.js";
 import User from "../models/User.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { sendExpoPush } from "./notifications.js";
+import { TaskStatus } from "../enum/task.js";
 
 const router = Router();
 
@@ -109,7 +110,12 @@ router.post("/", async (req, res) => {
         `Task: ${t.title.trim()}`,
         `${creatorName} created a new task ${
           t.assignedTo !== "Me" ? "for you" : ""
-        }`
+        }`,
+        {
+          type: "task",
+          taskId: t._id,
+          isActive: t.status === TaskStatus.Active,
+        }
       );
     }
 
@@ -155,7 +161,12 @@ router.put("/:id", async (req, res) => {
           ? [partner.notificationToken, owner.notificationToken!]
           : [owner.notificationToken!],
         `Task: ${task.title.trim()}`,
-        `${updaterName} updated this task`
+        `${updaterName} updated this task`,
+        {
+          type: "task",
+          taskId: task._id,
+          isActive: task.status === TaskStatus.Active,
+        }
       );
     }
 
@@ -215,7 +226,12 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
         `Task: ${task.title.trim()}`,
         `${actorName} ${status === "Completed" ? "completed" : "reopened"} "${
           subtask.title
-        }"`
+        }"`,
+        {
+          type: "task",
+          taskId: task._id,
+          isActive: task.status === TaskStatus.Active,
+        }
       );
     }
 
@@ -250,7 +266,12 @@ router.post("/:id/comment", async (req, res) => {
       await sendExpoPush(
         [partner?.notificationToken!],
         `Task: ${task.title.trim()} 💬`,
-        `${commenterName} commented: "${text}"`
+        `${commenterName} commented: "${text}"`,
+        {
+          type: "task",
+          taskId: task._id,
+          isActive: task.status === TaskStatus.Active,
+        }
       );
     }
 
@@ -288,7 +309,12 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
       await sendExpoPush(
         [partner.notificationToken],
         `Task: ${task.title.trim()} 💬`,
-        `${commenterName} commented on "${subtask.title}": "${text}"`
+        `${commenterName} commented on "${subtask.title}": "${text}"`,
+        {
+          type: "task",
+          taskId: task._id,
+          isActive: task.status === TaskStatus.Active,
+        }
       );
     }
 

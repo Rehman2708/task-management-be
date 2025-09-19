@@ -45,7 +45,7 @@ router.post("/", async (req, res) => {
         const newNote = await Notes.create({ title, note, createdBy });
         const { owner, partner } = await getOwnerAndPartner(createdBy);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`);
+            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`, { type: "note", noteData: newNote });
         }
         res.status(201).json(newNote);
     }
@@ -72,7 +72,7 @@ router.put("/:id", async (req, res) => {
         if (owner?.notificationToken) {
             await sendExpoPush(partner?.notificationToken
                 ? [partner.notificationToken, owner.notificationToken]
-                : [owner.notificationToken], `Note: ${title.trim()}`, `${updatedNote.title.trim()} note has been updated!`);
+                : [owner.notificationToken], `Note: ${title.trim()}`, `${updatedNote.title.trim()} note has been updated!`, { type: "note", noteData: updatedNote });
         }
         res.json(updatedNote);
     }
@@ -123,7 +123,7 @@ router.patch("/pin/:id", async (req, res) => {
         if (owner?.notificationToken) {
             await sendExpoPush(partner?.notificationToken
                 ? [partner.notificationToken, owner.notificationToken]
-                : [owner.notificationToken], `Note: ${updatedNote.title.trim()}`, `This note has been ${action}!`);
+                : [owner.notificationToken], `Note: ${updatedNote.title.trim()}`, `This note has been ${action}!`, { type: "note", noteData: updatedNote });
         }
         res.json(updatedNote);
     }

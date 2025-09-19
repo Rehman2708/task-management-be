@@ -54,7 +54,8 @@ router.post("/", async (req, res) => {
       await sendExpoPush(
         [partner.notificationToken],
         `Note: ${title.trim()}`,
-        `${owner?.name?.trim()} created a note!`
+        `${owner?.name?.trim()} created a note!`,
+        { type: "note", noteData: newNote }
       );
     }
     res.status(201).json(newNote);
@@ -88,7 +89,8 @@ router.put("/:id", async (req, res) => {
           ? [partner.notificationToken, owner.notificationToken]
           : [owner.notificationToken],
         `Note: ${title.trim()}`,
-        `${updatedNote.title.trim()} note has been updated!`
+        `${updatedNote.title.trim()} note has been updated!`,
+        { type: "note", noteData: updatedNote }
       );
     }
     res.json(updatedNote);
@@ -151,7 +153,8 @@ router.patch("/pin/:id", async (req, res) => {
           ? [partner.notificationToken, owner.notificationToken]
           : [owner.notificationToken],
         `Note: ${updatedNote.title.trim()}`,
-        `This note has been ${action}!`
+        `This note has been ${action}!`,
+        { type: "note", noteData: updatedNote }
       );
     }
 
