@@ -16,12 +16,20 @@ const SubtaskSchema = new mongoose.Schema({
             text: { type: String, required: true },
             createdBy: { type: String, required: true }, // userId
             createdAt: { type: Date, default: Date.now },
+            createdByDetails: {
+                name: { type: String, required: false },
+                image: { type: String, required: false },
+            },
         },
     ],
 }, { _id: true });
 // Task-level Comment Schema
 const CommentSchema = new mongoose.Schema({
     by: { type: String, required: true }, // userId
+    createdByDetails: {
+        name: { type: String, required: false },
+        image: { type: String, required: false },
+    },
     text: { type: String, required: true },
     date: { type: Date, default: Date.now },
 }, { _id: false });
@@ -57,6 +65,10 @@ const TaskSchema = new mongoose.Schema({
     description: { type: String, default: "" },
     ownerUserId: { type: String, required: true }, // creator/owner
     createdBy: { type: String, default: null },
+    createdByDetails: {
+        name: { type: String, required: false },
+        image: { type: String, required: false },
+    },
     assignedTo: {
         type: String,
         enum: Object.values(AssignedTo),

@@ -8,6 +8,10 @@ const NoteSchema = new mongoose.Schema(
     createdBy: { type: String, required: true }, // userId
     pinned: { type: Boolean, default: false }, // New pinned field
     createdAt: { type: Date, default: Date.now },
+    createdByDetails: {
+      name: { type: String, required: false },
+      image: { type: String, required: false },
+    },
   },
   { timestamps: true }
 );

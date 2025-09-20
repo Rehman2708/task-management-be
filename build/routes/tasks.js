@@ -78,19 +78,23 @@ router.post("/", async (req, res) => {
             completedAt: null,
             comments: [],
         }));
+        const { owner, partner } = await getOwnerAndPartner(payload.createdBy);
         const t = await Task.create({
             title: payload.title,
             image: payload.image || "",
             description: payload.description || "",
             ownerUserId: payload.ownerUserId,
             createdBy: payload.createdBy || payload.ownerUserId,
+            createdByDetails: {
+                name: owner?.name,
+                image: owner?.image,
+            },
             assignedTo: payload.assignedTo || "Both",
             priority: payload.priority || "Medium",
             frequency: payload.frequency || "Once",
             subtasks,
             status: "Active",
         });
-        const { owner, partner } = await getOwnerAndPartner(t.createdBy);
         const creatorName = await getDisplayName(t.createdBy);
         if (partner?.notificationToken) {
             await sendExpoPush([partner.notificationToken], `Task: ${t.title.trim()}`, `${creatorName} created a new task ${t.assignedTo !== "Me" ? "for you" : ""}`, {
@@ -216,10 +220,18 @@ router.post("/:id/comment", async (req, res) => {
         const task = await Task.findById(req.params.id);
         if (!task)
             return res.status(404).json({ error: "Task not found" });
-        task.comments = task.comments || [];
-        task.comments.push({ by, text, date: new Date() });
-        await task.save();
         const { owner, partner } = await getOwnerAndPartner(by);
+        task.comments = task.comments || [];
+        task.comments.push({
+            by,
+            text,
+            createdByDetails: {
+                name: owner?.name,
+                image: owner?.image,
+            },
+            date: new Date(),
+        });
+        await task.save();
         const commenterName = await getDisplayName(by);
         if (partner?.notificationToken) {
             await sendExpoPush([partner?.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented: "${text}"`, {
@@ -249,10 +261,18 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
         const subtask = task.subtasks?.id(req.params.subtaskId);
         if (!subtask)
             return res.status(404).json({ error: "Subtask not found" });
-        subtask.comments = subtask.comments || [];
-        subtask.comments.push({ text, createdBy: userId, createdAt: new Date() });
-        await task.save();
         const { owner, partner } = await getOwnerAndPartner(userId);
+        subtask.comments = subtask.comments || [];
+        subtask.comments.push({
+            text,
+            createdBy: userId,
+            createdByDetails: {
+                name: owner?.name,
+                image: owner?.image,
+            },
+            createdAt: new Date(),
+        });
+        await task.save();
         const commenterName = await getDisplayName(userId);
         if (partner?.notificationToken) {
             await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented on "${subtask.title}": "${text}"`, {

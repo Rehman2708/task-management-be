@@ -42,14 +42,22 @@ router.get("/:ownerUserId", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { title, note, createdBy } = req.body || {};
+    const { owner, partner } = await getOwnerAndPartner(createdBy);
     if (!title || !note || !createdBy) {
       return res
         .status(400)
         .json({ error: "title, note and createdBy are required" });
     }
 
-    const newNote = await Notes.create({ title, note, createdBy });
-    const { owner, partner } = await getOwnerAndPartner(createdBy);
+    const newNote = await Notes.create({
+      title,
+      note,
+      createdBy,
+      createdByDetails: {
+        name: owner?.name,
+        image: owner?.image || "",
+      },
+    });
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
