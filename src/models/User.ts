@@ -8,6 +8,7 @@ export interface IUser {
   createdAt: Date;
   updatedAt: Date;
   notificationToken?: string | null;
+  image?: string | null;
 }
 
 // Document type for Mongoose
@@ -20,6 +21,7 @@ const UserSchema = new mongoose.Schema<IUserDocument>(
     partnerUserId: { type: String, default: null },
     password: { type: String, required: true },
     notificationToken: { type: String, required: false },
+    image: { type: String, required: false },
   },
   { timestamps: true }
 );

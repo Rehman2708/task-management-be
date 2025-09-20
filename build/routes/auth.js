@@ -16,6 +16,7 @@ async function formatUserResponse(u) {
         partner: partner ? { userId: partner.userId, name: partner.name } : null,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
+        image: u.image ?? null,
     };
 }
 /**
@@ -162,6 +163,64 @@ router.post("/logout", async (req, res) => {
     }
     catch (err) {
         console.error("Logout error:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+/**
+ * 🟢 Update Profile API
+ */
+router.put("/update-profile", async (req, res) => {
+    try {
+        const { userId, name, image } = req.body || {};
+        if (!userId) {
+            return res.status(400).json({ message: "userId is required" });
+        }
+        const u = await User.findOne({ userId });
+        if (!u) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        if (name)
+            u.name = name;
+        if (image !== undefined)
+            u.image = image;
+        await u.save();
+        res.json({
+            message: "Profile updated successfully",
+            user: await formatUserResponse(u),
+        });
+    }
+    catch (err) {
+        console.error("Update profile error:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+/**
+ * 🟢 Update Password API
+ */
+router.put("/update-password", async (req, res) => {
+    try {
+        const { userId, oldPassword, newPassword } = req.body || {};
+        if (!userId || !oldPassword || !newPassword) {
+            return res
+                .status(400)
+                .json({ message: "userId, oldPassword, and newPassword are required" });
+        }
+        const u = await User.findOne({ userId });
+        if (!u) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        if (u.password !== oldPassword) {
+            return res.status(401).json({ message: "Old password is incorrect" });
+        }
+        u.password = newPassword;
+        await u.save();
+        res.json({
+            message: "Password updated successfully",
+            user: await formatUserResponse(u),
+        });
+    }
+    catch (err) {
+        console.error("Update password error:", err);
         res.status(500).json({ error: "Internal server error" });
     }
 });
