@@ -15,6 +15,57 @@ async function getDisplayName(userId) {
     return u?.name?.trim() || userId;
 }
 /**
+ * Utility: refresh createdByDetails on comments/subtask comments
+ */
+async function enrichCreatedByDetails(item) {
+    if (!item)
+        return item;
+    const userId = item.by || item.createdBy;
+    if (!userId)
+        return item;
+    const user = await User.findOne({ userId }).lean();
+    if (!user)
+        return item;
+    item.createdByDetails = {
+        name: user.name,
+        image: user?.image,
+    };
+    return item;
+}
+/**
+ * Utility: refresh all comments of a task
+ */
+/**
+ * Utility: refresh task + comments/subtask comments
+ */
+async function enrichTask(task) {
+    if (!task)
+        return task;
+    // Refresh task.createdByDetails
+    if (task.createdBy) {
+        const user = await User.findOne({ userId: task.createdBy }).lean();
+        if (user) {
+            task.createdByDetails = {
+                name: user.name,
+                image: user.image,
+            };
+        }
+    }
+    // Refresh task.comments
+    if (Array.isArray(task.comments)) {
+        task.comments = await Promise.all(task.comments.map(enrichCreatedByDetails));
+    }
+    // Refresh subtasks.comments
+    if (Array.isArray(task.subtasks)) {
+        for (const subtask of task.subtasks) {
+            if (Array.isArray(subtask.comments)) {
+                subtask.comments = await Promise.all(subtask.comments.map(enrichCreatedByDetails));
+            }
+        }
+    }
+    return task;
+}
+/**
  * Get active tasks
  */
 router.get("/:ownerUserId", async (req, res) => {
@@ -28,9 +79,10 @@ router.get("/:ownerUserId", async (req, res) => {
                 $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
             };
         }
-        const list = await Task.find(filter)
+        let list = await Task.find(filter)
             .sort({ nextDue: 1, updatedAt: -1 })
             .lean();
+        list = await Promise.all(list.map(enrichTask));
         res.json(list);
     }
     catch (err) {
@@ -52,7 +104,8 @@ router.get("/history/:ownerUserId", async (req, res) => {
                 $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
             };
         }
-        const list = await Task.find(filter).sort({ updatedAt: -1 }).lean();
+        let list = await Task.find(filter).sort({ updatedAt: -1 }).lean();
+        list = await Promise.all(list.map(enrichTask));
         res.json(list);
     }
     catch (err) {
@@ -85,10 +138,6 @@ router.post("/", async (req, res) => {
             description: payload.description || "",
             ownerUserId: payload.ownerUserId,
             createdBy: payload.createdBy || payload.ownerUserId,
-            createdByDetails: {
-                name: owner?.name,
-                image: owner?.image,
-            },
             assignedTo: payload.assignedTo || "Both",
             priority: payload.priority || "Medium",
             frequency: payload.frequency || "Once",
@@ -115,9 +164,10 @@ router.post("/", async (req, res) => {
  */
 router.get("/task/:id", async (req, res) => {
     try {
-        const t = await Task.findById(req.params.id).lean();
+        let t = await Task.findById(req.params.id).lean();
         if (!t)
             return res.status(404).json({ error: "Task not found" });
+        t = await enrichTask(t);
         res.json(t);
     }
     catch (err) {
@@ -225,16 +275,11 @@ router.post("/:id/comment", async (req, res) => {
         task.comments.push({
             by,
             text,
-            createdByDetails: {
-                name: owner?.name,
-                image: owner?.image,
-            },
-            date: new Date(),
         });
         await task.save();
         const commenterName = await getDisplayName(by);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner?.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented: "${text}"`, {
+            await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented: "${text}"`, {
                 type: "task",
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
@@ -266,10 +311,6 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
         subtask.comments.push({
             text,
             createdBy: userId,
-            createdByDetails: {
-                name: owner?.name,
-                image: owner?.image,
-            },
             createdAt: new Date(),
         });
         await task.save();
