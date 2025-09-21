@@ -1,5 +1,6 @@
 import { Router } from "express";
 import User from "../models/User.js";
+import { sendExpoPush } from "./notifications.js";
 const router = Router();
 async function formatUserResponse(u) {
     if (!u)
@@ -114,10 +115,27 @@ router.post("/connect-partner", async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         if (!partner)
             return res.status(404).json({ message: "Partner not found" });
+        // ✅ NEW: Check if either is already connected
+        if (user.partnerUserId) {
+            return res
+                .status(400)
+                .json({ message: "This user is already connected to someone else" });
+        }
+        if (partner.partnerUserId) {
+            return res.status(400).json({
+                message: "The partner user is already connected to someone else",
+            });
+        }
         user.partnerUserId = partner.userId;
         partner.partnerUserId = user.userId;
         await user.save();
         await partner.save();
+        if (user?.notificationToken) {
+            await sendExpoPush([user.notificationToken], `Partner Connected ❤️`, `You are connected with ${partner.name}🎉!`, { type: "profile" });
+        }
+        if (partner?.notificationToken) {
+            await sendExpoPush([partner.notificationToken], `Partner Connected ❤️`, `${user.name} connected with you🎉!`, { type: "profile" });
+        }
         res.json({
             message: "Partner connected successfully",
             user: await formatUserResponse(user),
