@@ -13,7 +13,13 @@ async function formatUserResponse(u) {
     return {
         userId: u.userId,
         name: u.name,
-        partner: partner ? { userId: partner.userId, name: partner.name } : null,
+        partner: partner
+            ? {
+                userId: partner.userId,
+                name: partner.name,
+                image: partner.image ?? "",
+            }
+            : null,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
         image: u.image ?? null,

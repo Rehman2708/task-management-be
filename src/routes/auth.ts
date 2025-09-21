@@ -6,7 +6,7 @@ const router = Router();
 interface UserResponse {
   userId: string;
   name: string;
-  partner: { userId: string; name: string } | null;
+  partner: { userId: string; name: string; image: string | null } | null;
   createdAt: Date;
   updatedAt: Date;
   image: string | null;
@@ -27,7 +27,13 @@ async function formatUserResponse(
   return {
     userId: u.userId,
     name: u.name,
-    partner: partner ? { userId: partner.userId, name: partner.name } : null,
+    partner: partner
+      ? {
+          userId: partner.userId,
+          name: partner.name,
+          image: partner.image ?? "",
+        }
+      : null,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
     image: u.image ?? null,
