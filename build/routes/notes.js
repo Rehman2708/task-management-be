@@ -5,12 +5,16 @@ import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 const router = Router();
 /**
- * Get all notes (optionally by user)
- * Optional query: ?userId=<userId>
+ * Get all notes (optionally by user) with pagination
+ * Query params:
+ *   ?page=<number>        (default 1)
+ *   ?pageSize=<number>    (default 10)
  */
 router.get("/:ownerUserId", async (req, res) => {
     try {
         const { ownerUserId } = req.params;
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const pageSize = Math.max(parseInt(req.query.pageSize) || 10, 1);
         const filter = {};
         if (ownerUserId) {
             const owner = await User.findOne({ userId: ownerUserId }).lean();
@@ -19,11 +23,16 @@ router.get("/:ownerUserId", async (req, res) => {
                 $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
             };
         }
-        // Sort: pinned notes first, then by updatedAt descending
+        // Count total matching documents for pagination
+        const totalCount = await Notes.countDocuments(filter);
+        const totalPages = Math.ceil(totalCount / pageSize);
+        // Fetch paginated notes: pinned first, then newest first
         const notes = await Notes.find(filter)
             .sort({ pinned: -1, createdAt: -1 })
+            .skip((page - 1) * pageSize)
+            .limit(pageSize)
             .lean();
-        // Update createdByDetails for each note
+        // Update createdByDetails if needed
         await Promise.all(notes.map(async (note) => {
             const user = await User.findOne({ userId: note.createdBy }).lean();
             if (!user)
@@ -32,18 +41,21 @@ router.get("/:ownerUserId", async (req, res) => {
                 name: user.name,
                 image: user.image || "",
             };
-            // If details are missing or outdated, update them
             if (!note.createdByDetails ||
                 note.createdByDetails.name !== latestDetails.name ||
                 note.createdByDetails.image !== latestDetails.image) {
                 await Notes.findByIdAndUpdate(note._id, {
                     createdByDetails: latestDetails,
                 });
-                note.createdByDetails = latestDetails; // update in response too
+                note.createdByDetails = latestDetails;
             }
             return note;
         }));
-        res.json(notes);
+        res.json({
+            notes,
+            totalPages,
+            currentPage: page,
+        });
     }
     catch (err) {
         console.error("Error fetching notes:", err);

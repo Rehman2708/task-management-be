@@ -112,6 +112,10 @@ router.get("/history/:ownerUserId", async (req, res) => {
   try {
     const { ownerUserId } = req.params;
 
+    // 🔹 Read & sanitize pagination query params
+    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+    const pageSize = Math.max(parseInt(req.query.pageSize as string) || 10, 1);
+
     const filter: any = { status: { $in: ["Completed", "Expired"] } };
 
     if (ownerUserId) {
@@ -122,10 +126,25 @@ router.get("/history/:ownerUserId", async (req, res) => {
       };
     }
 
-    let list = await Task.find(filter).sort({ updatedAt: -1 }).lean();
+    // 🔹 Total count for pagination
+    const totalCount = await Task.countDocuments(filter);
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    // 🔹 Paginated query
+    let list = await Task.find(filter)
+      .sort({ updatedAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    // Enrich each task
     list = await Promise.all(list.map(enrichTask));
 
-    res.json(list);
+    res.json({
+      tasks: list,
+      totalPages,
+      currentPage: page,
+    });
   } catch (err: any) {
     console.error("Error fetching task history:", err);
     res.status(500).json({ error: err.message || "Failed to fetch history" });
