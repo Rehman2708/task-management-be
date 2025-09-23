@@ -9,6 +9,7 @@ const router = Router();
 /**
  * GET /videos/:ownerUserId
  * Query params: ?page=<number> (default 1)  ?pageSize=<number> (default 10)
+ * Returns paginated globally shuffled videos
  */
 router.get(
   "/:ownerUserId",
@@ -27,52 +28,100 @@ router.get(
       const pageSize = Math.max(parseInt(req.query.pageSize || "10", 10), 1);
 
       const filter: Record<string, any> = {};
-      //   if (ownerUserId) {
-      //     const owner = await User.findOne({ userId: ownerUserId }).lean<IUser>();
-      //     const partnerUserId = owner?.partnerUserId;
-      //     filter.createdBy = {
-      //       $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
-      //     };
-      //   }
+      if (ownerUserId) {
+        const owner = await User.findOne({ userId: ownerUserId }).lean<IUser>();
+        const partnerUserId = owner?.partnerUserId;
+        filter.createdBy = {
+          $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
+        };
+      }
 
+      // Get total count
       const totalCount = await Video.countDocuments(filter);
       const totalPages = Math.ceil(totalCount / pageSize);
 
-      const videos = await Video.find(filter)
-        .sort({ pinned: -1, createdAt: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize)
-        .lean<IVideo[]>();
+      // Fetch all matching video IDs for global shuffle
+      const allVideoIds = await Video.find(filter).select("_id").lean();
+      const shuffledIds = allVideoIds
+        .map((v) => v._id)
+        .sort(() => Math.random() - 0.5);
 
-      // Update createdByDetails if needed
-      await Promise.all(
-        videos.map(async (video) => {
-          const user = await User.findOne({
-            userId: video.createdBy,
-          }).lean<IUser>();
-          if (!user) return;
-
-          const latestDetails = {
-            name: user.name,
-            image: user.image || "",
-          };
-
-          if (
-            !video.createdByDetails ||
-            video.createdByDetails.name !== latestDetails.name ||
-            video.createdByDetails.image !== latestDetails.image
-          ) {
-            await Video.findByIdAndUpdate(video._id, {
-              createdByDetails: latestDetails,
-            });
-            video.createdByDetails = latestDetails;
-          }
-        })
+      // Paginate the shuffled IDs
+      const pagedIds = shuffledIds.slice(
+        (page - 1) * pageSize,
+        page * pageSize
       );
 
-      res.json({ videos, totalPages, currentPage: page });
+      // Fetch paginated videos
+      const videos = await Video.find({ _id: { $in: pagedIds } }).lean<
+        IVideo[]
+      >();
+
+      // Bulk update createdByDetails if needed
+      const bulkOps = [];
+      for (const video of videos) {
+        const user = await User.findOne({
+          userId: video.createdBy,
+        }).lean<IUser>();
+        if (!user) continue;
+
+        const latestDetails = { name: user.name, image: user.image || "" };
+        if (
+          !video.createdByDetails ||
+          video.createdByDetails.name !== latestDetails.name ||
+          video.createdByDetails.image !== latestDetails.image
+        ) {
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: video._id },
+              update: { createdByDetails: latestDetails },
+            },
+          });
+          video.createdByDetails = latestDetails;
+        }
+      }
+      if (bulkOps.length > 0) await Video.bulkWrite(bulkOps);
+
+      // Sort videos according to shuffled order
+      const sortedVideos = pagedIds.map((id) =>
+        videos.find((v) => v._id.equals(id))
+      );
+
+      res.json({ videos: sortedVideos, totalPages, currentPage: page });
     } catch (err: any) {
       console.error("Error fetching videos:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch videos" });
+    }
+  }
+);
+
+/**
+ * GET /videos/all/:ownerUserId
+ * Returns ALL shuffled videos with only title, createdAt, createdByDetails
+ */
+router.get(
+  "/all/:ownerUserId",
+  async (req: Request<{ ownerUserId: string }>, res: Response) => {
+    try {
+      const { ownerUserId } = req.params;
+
+      const filter: Record<string, any> = {};
+      if (ownerUserId) {
+        const owner = await User.findOne({ userId: ownerUserId }).lean<IUser>();
+        const partnerUserId = owner?.partnerUserId;
+        filter.createdBy = {
+          $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
+        };
+      }
+
+      const allVideos = await Video.find(
+        filter,
+        "title createdAt createdByDetails"
+      ).lean<Pick<IVideo, "title" | "createdAt" | "createdByDetails">[]>();
+
+      res.json({ videos: allVideos });
+    } catch (err: any) {
+      console.error("Error fetching all shuffled videos:", err);
       res.status(500).json({ error: err.message || "Failed to fetch videos" });
     }
   }
