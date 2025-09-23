@@ -7,6 +7,7 @@ import mongoose from "mongoose";
 import authRoutes from "./routes/auth.js";
 import tasksRoutes from "./routes/tasks.js";
 import notesRoutes from "./routes/notes.js";
+import videosRouts from "./routes/videos.js";
 // Cron job
 import { initCron } from "./jobs/taskScheduler.js";
 const app = express();
@@ -22,6 +23,7 @@ console.log("MongoDB connected");
 app.use("/auth", authRoutes);
 app.use("/tasks", tasksRoutes);
 app.use("/notes", notesRoutes);
+app.use("/videos", videosRouts);
 // Health check
 app.get("/", (_req, res) => res.json({ ok: true }));
 // Start server
