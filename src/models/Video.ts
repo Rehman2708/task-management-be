@@ -8,6 +8,8 @@ export interface IVideo extends Document {
     name: string;
     image: string;
   };
+  createdAt: Date; // Add this
+  updatedAt: Date; // Add this
 }
 
 const VideoSchema = new mongoose.Schema<IVideo>(
