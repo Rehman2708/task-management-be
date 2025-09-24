@@ -203,7 +203,7 @@ router.put("/:id", async (req, res) => {
         Object.assign(task, updates);
         await task.save();
         const { owner, partner } = await getOwnerAndPartner(task.createdBy);
-        const updaterName = await getDisplayName(updates.updatedBy);
+        const updaterName = await getDisplayName(updates?.subtasks?.[0]?.updatedBy);
         if (owner?.notificationToken || partner?.notificationToken) {
             await sendExpoPush(partner?.notificationToken
                 ? [partner.notificationToken, owner.notificationToken]
