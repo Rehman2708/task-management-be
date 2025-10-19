@@ -11,6 +11,7 @@ interface UserResponse {
   createdAt: Date;
   updatedAt: Date;
   image: string | null;
+  theme: { light: string; dark: string };
 }
 
 async function formatUserResponse(
@@ -38,6 +39,7 @@ async function formatUserResponse(
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
     image: u.image ?? null,
+    theme: u.theme ?? null,
   };
 }
 
@@ -163,7 +165,8 @@ router.post("/connect-partner", async (req, res) => {
         [user.notificationToken],
         `Partner Connected ❤️`,
         `You are connected with ${partner.name}🎉!`,
-        { type: "profile" }
+        { type: "profile" },
+        [userId]
       );
     }
     if (partner?.notificationToken) {
@@ -171,7 +174,8 @@ router.post("/connect-partner", async (req, res) => {
         [partner.notificationToken],
         `Partner Connected ❤️`,
         `${user.name} connected with you🎉!`,
-        { type: "profile" }
+        { type: "profile" },
+        [partnerUserId]
       );
     }
     res.json({
@@ -260,6 +264,46 @@ router.put("/update-profile", async (req, res) => {
     });
   } catch (err) {
     console.error("Update profile error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * 🟢 Update Theme API
+ */
+router.put("/update-theme", async (req, res) => {
+  try {
+    const { userId, theme } = req.body || {};
+
+    if (!userId) {
+      return res.status(400).json({ message: "userId is required" });
+    }
+
+    if (!theme || typeof theme !== "object") {
+      return res.status(400).json({ message: "theme object is required" });
+    }
+
+    const { light, dark } = theme;
+    if (!light || !dark) {
+      return res.status(400).json({ message: "Both color required" });
+    }
+
+    const user = await User.findOne({ userId });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (light) user.theme.light = light;
+    if (dark) user.theme.dark = dark;
+
+    await user.save();
+
+    res.json({
+      message: "Theme updated successfully",
+      user: await formatUserResponse(user),
+    });
+  } catch (err) {
+    console.error("Update theme error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

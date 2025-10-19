@@ -100,7 +100,8 @@ router.post("/", async (req, res) => {
         [partner.notificationToken],
         `Note: ${title.trim()}`,
         `${owner?.name?.trim()} created a note!`,
-        { type: "note", noteData: newNote }
+        { type: "note", noteData: newNote },
+        [partner.userId]
       );
     }
     res.status(201).json(newNote);
@@ -131,11 +132,12 @@ router.put("/:id", async (req, res) => {
     if (owner?.notificationToken) {
       await sendExpoPush(
         partner?.notificationToken
-          ? [partner.notificationToken, owner.notificationToken]
+          ? [partner.notificationToken]
           : [owner.notificationToken],
         `Note: ${title.trim()}`,
         `${updatedNote.title.trim()} note has been updated!`,
-        { type: "note", noteData: updatedNote }
+        { type: "note", noteData: updatedNote },
+        [partner?.userId ?? ""]
       );
     }
     res.json(updatedNote);
@@ -157,7 +159,9 @@ router.delete("/:id", async (req, res) => {
       await sendExpoPush(
         [owner.notificationToken],
         `Note deleted ❌`,
-        `${deletedNote.title.trim()} has been deleted!`
+        `${deletedNote.title.trim()} has been deleted!`,
+        undefined,
+        [owner.userId]
       );
     }
     res.json({ message: "Note deleted successfully" });
@@ -195,11 +199,12 @@ router.patch("/pin/:id", async (req, res) => {
     if (owner?.notificationToken) {
       await sendExpoPush(
         partner?.notificationToken
-          ? [partner.notificationToken, owner.notificationToken]
+          ? [partner.notificationToken]
           : [owner.notificationToken],
         `Note: ${updatedNote.title.trim()}`,
         `This note has been ${action}!`,
-        { type: "note", noteData: updatedNote }
+        { type: "note", noteData: updatedNote },
+        [partner?.userId ?? owner.userId]
       );
     }
 

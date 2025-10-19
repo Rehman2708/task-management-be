@@ -24,6 +24,7 @@ async function formatUserResponse(u) {
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
         image: u.image ?? null,
+        theme: u.theme ?? null,
     };
 }
 /**
@@ -131,10 +132,10 @@ router.post("/connect-partner", async (req, res) => {
         await user.save();
         await partner.save();
         if (user?.notificationToken) {
-            await sendExpoPush([user.notificationToken], `Partner Connected ❤️`, `You are connected with ${partner.name}🎉!`, { type: "profile" });
+            await sendExpoPush([user.notificationToken], `Partner Connected ❤️`, `You are connected with ${partner.name}🎉!`, { type: "profile" }, [userId]);
         }
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Partner Connected ❤️`, `${user.name} connected with you🎉!`, { type: "profile" });
+            await sendExpoPush([partner.notificationToken], `Partner Connected ❤️`, `${user.name} connected with you🎉!`, { type: "profile" }, [partnerUserId]);
         }
         res.json({
             message: "Partner connected successfully",
@@ -215,6 +216,41 @@ router.put("/update-profile", async (req, res) => {
     }
     catch (err) {
         console.error("Update profile error:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+/**
+ * 🟢 Update Theme API
+ */
+router.put("/update-theme", async (req, res) => {
+    try {
+        const { userId, theme } = req.body || {};
+        if (!userId) {
+            return res.status(400).json({ message: "userId is required" });
+        }
+        if (!theme || typeof theme !== "object") {
+            return res.status(400).json({ message: "theme object is required" });
+        }
+        const { light, dark } = theme;
+        if (!light || !dark) {
+            return res.status(400).json({ message: "Both color required" });
+        }
+        const user = await User.findOne({ userId });
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        if (light)
+            user.theme.light = light;
+        if (dark)
+            user.theme.dark = dark;
+        await user.save();
+        res.json({
+            message: "Theme updated successfully",
+            user: await formatUserResponse(user),
+        });
+    }
+    catch (err) {
+        console.error("Update theme error:", err);
         res.status(500).json({ error: "Internal server error" });
     }
 });

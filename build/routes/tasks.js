@@ -166,7 +166,7 @@ router.post("/", async (req, res) => {
                 type: "task",
                 taskId: t._id,
                 isActive: t.status === TaskStatus.Active,
-            });
+            }, [partner?.userId]);
         }
         res.status(201).json(t);
     }
@@ -206,12 +206,12 @@ router.put("/:id", async (req, res) => {
         const updaterName = await getDisplayName(updates?.subtasks?.[0]?.updatedBy);
         if (owner?.notificationToken || partner?.notificationToken) {
             await sendExpoPush(partner?.notificationToken
-                ? [partner.notificationToken, owner.notificationToken]
+                ? [partner.notificationToken]
                 : [owner.notificationToken], `Task: ${task.title.trim()}`, `${updaterName} updated this task`, {
                 type: "task",
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
-            });
+            }, [partner?.userId ?? owner.userId]);
         }
         res.json(task);
     }
@@ -266,7 +266,7 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
                 type: "task",
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
-            });
+            }, [partner?.userId]);
         }
         res.json(task);
     }
@@ -299,7 +299,7 @@ router.post("/:id/comment", async (req, res) => {
                 type: "task",
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
-            });
+            }, [partner?.userId]);
         }
         res.json(task);
     }
@@ -336,7 +336,7 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
                 type: "task",
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
-            });
+            }, [partner?.userId]);
         }
         res.json(task);
     }

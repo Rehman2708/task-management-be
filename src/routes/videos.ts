@@ -153,7 +153,8 @@ router.post(
           [partner.notificationToken],
           `Video: ${title.trim()}`,
           `${owner?.name?.trim()} added a video!`,
-          { type: "video", videoData: newVideo }
+          { type: "video", videoData: newVideo },
+          [partner?.userId]
         );
       }
 
@@ -180,7 +181,9 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
       await sendExpoPush(
         [owner.notificationToken],
         "Video deleted ❌",
-        `${deletedVideo.title.trim()} has been deleted!`
+        `${deletedVideo.title.trim()} has been deleted!`,
+        undefined,
+        [owner.userId]
       );
     }
 

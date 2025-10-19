@@ -8,7 +8,8 @@ import mongoose from "mongoose";
 import authRoutes from "./routes/auth.js";
 import tasksRoutes from "./routes/tasks.js";
 import notesRoutes from "./routes/notes.js";
-import videosRouts from "./routes/videos.js";
+import videosRoutes from "./routes/videos.js";
+import notificationRoutes from "./routes/notifications.js";
 
 // Cron job
 import { initCron } from "./jobs/taskScheduler.js";
@@ -30,7 +31,8 @@ console.log("MongoDB connected");
 app.use("/auth", authRoutes);
 app.use("/tasks", tasksRoutes);
 app.use("/notes", notesRoutes);
-app.use("/videos", videosRouts);
+app.use("/videos", videosRoutes);
+app.use("/notifications", notificationRoutes);
 
 // Health check
 app.get("/", (_req, res) => res.json({ ok: true }));

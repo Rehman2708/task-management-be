@@ -104,7 +104,7 @@ router.post("/", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(createdBy);
         const newVideo = await Video.create({ title, url, createdBy });
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Video: ${title.trim()}`, `${owner?.name?.trim()} added a video!`, { type: "video", videoData: newVideo });
+            await sendExpoPush([partner.notificationToken], `Video: ${title.trim()}`, `${owner?.name?.trim()} added a video!`, { type: "video", videoData: newVideo }, [partner?.userId]);
         }
         res.status(201).json(newVideo);
     }
@@ -124,7 +124,7 @@ router.delete("/:id", async (req, res) => {
         }
         const { owner } = await getOwnerAndPartner(deletedVideo.createdBy);
         if (owner?.notificationToken) {
-            await sendExpoPush([owner.notificationToken], "Video deleted ❌", `${deletedVideo.title.trim()} has been deleted!`);
+            await sendExpoPush([owner.notificationToken], "Video deleted ❌", `${deletedVideo.title.trim()} has been deleted!`, undefined, [owner.userId]);
         }
         res.json({ message: "Video deleted successfully" });
     }

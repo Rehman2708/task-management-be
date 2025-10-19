@@ -198,7 +198,8 @@ router.post("/", async (req, res) => {
           type: "task",
           taskId: t._id,
           isActive: t.status === TaskStatus.Active,
-        }
+        },
+        [partner?.userId]
       );
     }
 
@@ -243,7 +244,7 @@ router.put("/:id", async (req, res) => {
     if (owner?.notificationToken || partner?.notificationToken) {
       await sendExpoPush(
         partner?.notificationToken
-          ? [partner.notificationToken, owner.notificationToken!]
+          ? [partner.notificationToken]
           : [owner.notificationToken!],
         `Task: ${task.title.trim()}`,
         `${updaterName} updated this task`,
@@ -251,7 +252,8 @@ router.put("/:id", async (req, res) => {
           type: "task",
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
-        }
+        },
+        [partner?.userId ?? owner.userId]
       );
     }
 
@@ -316,7 +318,8 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
           type: "task",
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
-        }
+        },
+        [partner?.userId]
       );
     }
 
@@ -359,7 +362,8 @@ router.post("/:id/comment", async (req, res) => {
           type: "task",
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
-        }
+        },
+        [partner?.userId]
       );
     }
 
@@ -405,7 +409,8 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
           type: "task",
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
-        }
+        },
+        [partner?.userId]
       );
     }
 
