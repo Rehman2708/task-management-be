@@ -2,9 +2,20 @@ import { Router, Request, Response } from "express";
 import User, { IUser } from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
-import Video, { IVideo } from "../models/Video.js";
+import Video, { IVideo, IVideoComment } from "../models/Video.js";
 
 const router = Router();
+
+async function enrichComment(comment: any) {
+  if (!comment?.createdBy) return comment;
+  const user = await User.findOne({ userId: comment.createdBy }).lean();
+  if (!user) return comment;
+  comment.createdByDetails = {
+    name: user.name,
+    image: user.image || "",
+  };
+  return comment;
+}
 
 /**
  * GET /videos/:ownerUserId
@@ -239,5 +250,78 @@ router.patch(
     }
   }
 );
+
+/**
+ * POST /videos/:id/comment
+ * Body: { createdBy: string, text: string }
+ */
+router.post("/:id/comment", async (req: Request, res: Response) => {
+  try {
+    const { createdBy, text } = req.body;
+    if (!createdBy || !text) {
+      return res.status(400).json({ error: "createdBy and text are required" });
+    }
+
+    const video = await Video.findById(req.params.id);
+    if (!video) return res.status(404).json({ error: "Video not found" });
+
+    // Create new comment
+    const newComment: IVideoComment = {
+      text,
+      createdBy,
+      createdAt: new Date(),
+    };
+
+    // Add to video
+    video.comments.push(newComment);
+    await video.save();
+
+    // Enrich the last added comment with user details
+    const enrichedComment = await enrichComment(newComment);
+    video.comments[video.comments.length - 1] = enrichedComment;
+
+    // Save again if needed (optional, but ensures createdByDetails is stored)
+    await video.save();
+
+    // Notify partner if exists
+    const { owner, partner } = await getOwnerAndPartner(createdBy);
+    if (partner?.notificationToken) {
+      await sendExpoPush(
+        [partner.notificationToken],
+        `Comment on video: ${video.title}`,
+        `${
+          enrichedComment.createdByDetails?.name || "Someone"
+        } commented: "${text}"`,
+        { type: "video", videoData: video },
+        [partner.userId]
+      );
+    }
+
+    // Send enriched comments back
+    res.status(201).json({ comments: video.comments });
+  } catch (err: any) {
+    console.error("Add video comment error:", err);
+    res.status(500).json({ error: err.message || "Failed to add comment" });
+  }
+});
+
+/**
+ * GET /videos/:id/comments
+ * Returns all comments for a video
+ */
+router.get("/:id/comments", async (req: Request, res: Response) => {
+  try {
+    const video = await Video.findById(req.params.id).lean();
+    if (!video) return res.status(404).json({ error: "Video not found" });
+
+    const commentsArray = video.comments || []; // <-- fix here
+    const comments = await Promise.all(commentsArray.map(enrichComment));
+
+    res.json({ comments });
+  } catch (err: any) {
+    console.error("Get video comments error:", err);
+    res.status(500).json({ error: err.message || "Failed to fetch comments" });
+  }
+});
 
 export default router;

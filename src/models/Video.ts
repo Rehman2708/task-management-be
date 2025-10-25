@@ -1,5 +1,15 @@
 import mongoose, { Document, Types } from "mongoose";
 
+export interface IVideoComment {
+  text: string;
+  createdBy: string; // userId
+  createdAt: Date;
+  createdByDetails?: {
+    name: string;
+    image?: string;
+  };
+}
+
 export interface IVideo extends Document {
   _id: Types.ObjectId;
   title: string;
@@ -11,9 +21,23 @@ export interface IVideo extends Document {
     name: string;
     image: string;
   };
+  comments: IVideoComment[];
   createdAt: Date;
   updatedAt: Date;
 }
+
+const VideoCommentSchema = new mongoose.Schema<IVideoComment>(
+  {
+    text: { type: String, required: true },
+    createdBy: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+    createdByDetails: {
+      name: { type: String, required: false },
+      image: { type: String, required: false },
+    },
+  },
+  { _id: true }
+);
 
 const VideoSchema = new mongoose.Schema<IVideo>(
   {
@@ -26,6 +50,7 @@ const VideoSchema = new mongoose.Schema<IVideo>(
       name: { type: String, required: false },
       image: { type: String, required: false },
     },
+    comments: { type: [VideoCommentSchema], default: [] },
   },
   { timestamps: true }
 );
