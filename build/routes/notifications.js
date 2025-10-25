@@ -1,5 +1,4 @@
 import { Router } from "express";
-import fetch from "node-fetch";
 import Notification from "../models/Notification.js";
 export async function sendExpoPush(expoTokens = [], title, body, data = {}, toUserIds = []) {
     if (!expoTokens.length)
@@ -11,13 +10,11 @@ export async function sendExpoPush(expoTokens = [], title, body, data = {}, toUs
         body,
         data,
     }));
-    await fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(messages),
-    });
-    console.log(1);
-    console.log(title, body, toUserIds);
+    // await fetch("https://exp.host/--/api/v2/push/send", {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application/json" },
+    //   body: JSON.stringify(messages),
+    // });
     if (title && body && toUserIds.length) {
         await Notification.create({
             title,

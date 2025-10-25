@@ -5,12 +5,14 @@ export interface IVideo extends Document {
   title: string;
   url: string;
   createdBy: string;
+  partnerWatched: boolean;
+  viewedAt?: Date;
   createdByDetails: {
     name: string;
     image: string;
   };
-  createdAt: Date; // Add this
-  updatedAt: Date; // Add this
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const VideoSchema = new mongoose.Schema<IVideo>(
@@ -18,6 +20,8 @@ const VideoSchema = new mongoose.Schema<IVideo>(
     title: { type: String, required: true },
     url: { type: String, required: true },
     createdBy: { type: String, required: true },
+    partnerWatched: { type: Boolean, required: true, default: false },
+    viewedAt: { type: Date },
     createdByDetails: {
       name: { type: String, required: false },
       image: { type: String, required: false },

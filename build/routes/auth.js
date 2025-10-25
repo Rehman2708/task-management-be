@@ -19,6 +19,7 @@ async function formatUserResponse(u) {
                 userId: partner.userId,
                 name: partner.name,
                 image: partner.image ?? "",
+                theme: partner.theme ?? null,
             }
             : null,
         createdAt: u.createdAt,

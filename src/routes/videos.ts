@@ -27,6 +27,14 @@ router.get(
       const page = Math.max(parseInt(req.query.page || "1", 10), 1);
       const pageSize = Math.max(parseInt(req.query.pageSize || "10", 10), 1);
 
+      // Delete videos that have been viewed more than 24 hrs ago
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      await Video.deleteMany({
+        partnerWatched: true,
+        viewedAt: { $lte: cutoff }, // older than 24 hrs
+      });
+
+      // Build filter for fetching videos
       const filter: Record<string, any> = {};
       if (ownerUserId) {
         const owner = await User.findOne({ userId: ownerUserId }).lean<IUser>();
@@ -41,10 +49,12 @@ router.get(
       const totalPages = Math.ceil(totalCount / pageSize);
 
       // Fetch all matching video IDs for global shuffle
-      const allVideoIds = await Video.find(filter).select("_id").lean();
-      const shuffledIds = allVideoIds
-        .map((v) => v._id)
-        .sort(() => Math.random() - 0.5);
+      const allVideoIds = await Video.find(filter)
+        .sort({ createdAt: -1 })
+        .select("_id")
+        .lean();
+      const shuffledIds = allVideoIds.map((v) => v._id);
+      // .sort(() => Math.random() - 0.5);
 
       // Paginate the shuffled IDs
       const pagedIds = shuffledIds.slice(
@@ -193,5 +203,41 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
     res.status(500).json({ error: err.message || "Failed to delete video" });
   }
 });
+
+/**
+ * PATCH /videos/:id/viewed
+ * Marks a video as viewed by the partner
+ */
+router.patch(
+  "/:id/viewed",
+  async (req: Request<{ id: string }>, res: Response) => {
+    try {
+      const video = await Video.findById(req.params.id);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+
+      video.partnerWatched = true;
+      video.viewedAt = new Date(); // <-- mark viewed time
+      await video.save();
+
+      const { owner } = await getOwnerAndPartner(video.createdBy);
+      if (owner?.notificationToken) {
+        await sendExpoPush(
+          [owner.notificationToken],
+          "Video Viewed ✅",
+          `Your video "${video.title}" has been viewed!`,
+          { type: "video", videoData: video },
+          [owner.userId]
+        );
+      }
+
+      res.json({ message: "Video marked as viewed", video });
+    } catch (err: any) {
+      console.error("Error marking video as viewed:", err);
+      res
+        .status(500)
+        .json({ error: err.message || "Failed to mark video as viewed" });
+    }
+  }
+);
 
 export default router;

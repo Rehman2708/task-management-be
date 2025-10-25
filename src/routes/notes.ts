@@ -27,18 +27,15 @@ router.get("/:ownerUserId", async (req, res) => {
       };
     }
 
-    // Count total matching documents for pagination
     const totalCount = await Notes.countDocuments(filter);
     const totalPages = Math.ceil(totalCount / pageSize);
 
-    // Fetch paginated notes: pinned first, then newest first
     const notes = await Notes.find(filter)
       .sort({ pinned: -1, createdAt: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean();
 
-    // Update createdByDetails if needed
     await Promise.all(
       notes.map(async (note) => {
         const user = await User.findOne({ userId: note.createdBy }).lean();
@@ -76,6 +73,34 @@ router.get("/:ownerUserId", async (req, res) => {
 });
 
 /**
+ * ✅ Get a single note by ID
+ */
+router.get("/note/:id", async (req, res) => {
+  try {
+    const note = await Notes.findById(req.params.id).lean();
+    if (!note) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    // Fetch creator details (optional enhancement)
+    const user = await User.findOne({ userId: note.createdBy }).lean();
+    if (user) {
+      note.createdByDetails = {
+        name: user.name,
+        image: user.image || "",
+      };
+    }
+
+    res.json(note);
+  } catch (err: any) {
+    console.error("Error fetching single note:", err);
+    res
+      .status(500)
+      .json({ error: err.message || "Failed to fetch single note" });
+  }
+});
+
+/**
  * Create a new note
  * Body: { note, createdBy }
  */
@@ -100,7 +125,7 @@ router.post("/", async (req, res) => {
         [partner.notificationToken],
         `Note: ${title.trim()}`,
         `${owner?.name?.trim()} created a note!`,
-        { type: "note", noteData: newNote },
+        { type: "note", noteId: newNote._id },
         [partner.userId]
       );
     }
@@ -136,7 +161,7 @@ router.put("/:id", async (req, res) => {
           : [owner.notificationToken],
         `Note: ${title.trim()}`,
         `${updatedNote.title.trim()} note has been updated!`,
-        { type: "note", noteData: updatedNote },
+        { type: "note", noteId: updatedNote._id },
         [partner?.userId ?? ""]
       );
     }
@@ -203,7 +228,7 @@ router.patch("/pin/:id", async (req, res) => {
           : [owner.notificationToken],
         `Note: ${updatedNote.title.trim()}`,
         `This note has been ${action}!`,
-        { type: "note", noteData: updatedNote },
+        { type: "note", noteId: updatedNote._id },
         [partner?.userId ?? owner.userId]
       );
     }

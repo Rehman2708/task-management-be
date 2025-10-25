@@ -7,7 +7,12 @@ const router = Router();
 interface UserResponse {
   userId: string;
   name: string;
-  partner: { userId: string; name: string; image: string | null } | null;
+  partner: {
+    userId: string;
+    name: string;
+    image: string | null;
+    theme: { light: string; dark: string };
+  } | null;
   createdAt: Date;
   updatedAt: Date;
   image: string | null;
@@ -34,6 +39,7 @@ async function formatUserResponse(
           userId: partner.userId,
           name: partner.name,
           image: partner.image ?? "",
+          theme: partner.theme ?? null,
         }
       : null,
     createdAt: u.createdAt,
