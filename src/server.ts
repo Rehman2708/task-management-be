@@ -10,6 +10,7 @@ import tasksRoutes from "./routes/tasks.js";
 import notesRoutes from "./routes/notes.js";
 import videosRoutes from "./routes/videos.js";
 import notificationRoutes from "./routes/notifications.js";
+import serverRoutes from "./routes/server.js";
 
 // Cron job
 import { initCron } from "./jobs/taskScheduler.js";
@@ -33,6 +34,7 @@ app.use("/tasks", tasksRoutes);
 app.use("/notes", notesRoutes);
 app.use("/videos", videosRoutes);
 app.use("/notifications", notificationRoutes);
+app.use("/server", notificationRoutes);
 
 // Health check
 app.get("/", (_req, res) => res.json({ ok: true }));

@@ -26,6 +26,7 @@ app.use("/tasks", tasksRoutes);
 app.use("/notes", notesRoutes);
 app.use("/videos", videosRoutes);
 app.use("/notifications", notificationRoutes);
+app.use("/server", notificationRoutes);
 // Health check
 app.get("/", (_req, res) => res.json({ ok: true }));
 // Start server
