@@ -8,9 +8,6 @@ const router = Router();
 
 /**
  * Get all notes (optionally by user) with pagination
- * Query params:
- *   ?page=<number>        (default 1)
- *   ?pageSize=<number>    (default 10)
  */
 router.get("/:ownerUserId", async (req, res) => {
   try {
@@ -82,7 +79,6 @@ router.get("/note/:id", async (req, res) => {
       return res.status(404).json({ error: "Note not found" });
     }
 
-    // Fetch creator details (optional enhancement)
     const user = await User.findOne({ userId: note.createdBy }).lean();
     if (user) {
       note.createdByDetails = {
@@ -101,8 +97,8 @@ router.get("/note/:id", async (req, res) => {
 });
 
 /**
- * Create a new note
- * Body: { note, createdBy }
+ * ✅ Create a new note
+ * Body: { image, title, note }
  */
 router.post("/", async (req, res) => {
   try {
@@ -120,6 +116,8 @@ router.post("/", async (req, res) => {
       note,
       createdBy,
     });
+
+    // Send notification to the partner of the user performing the action
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
@@ -130,6 +128,7 @@ router.post("/", async (req, res) => {
         String(newNote._id)
       );
     }
+
     res.status(201).json(newNote);
   } catch (err: any) {
     console.error("Error creating note:", err);
@@ -138,14 +137,15 @@ router.post("/", async (req, res) => {
 });
 
 /**
- * Update a note
- * Body: { note }
+ * ✅ Update a note
+ * Body: { image, title, note, userId }
  */
 router.put("/:id", async (req, res) => {
   try {
-    const { image, title, note } = req.body || {};
+    const { image, title, note, userId } = req.body || {};
     if (!title) return res.status(400).json({ error: "title is required" });
     if (!note) return res.status(400).json({ error: "note is required" });
+    if (!userId) return res.status(400).json({ error: "userId is required" });
 
     const updatedNote = await Notes.findByIdAndUpdate(
       req.params.id,
@@ -154,19 +154,20 @@ router.put("/:id", async (req, res) => {
     );
 
     if (!updatedNote) return res.status(404).json({ error: "Note not found" });
-    const { owner, partner } = await getOwnerAndPartner(updatedNote.createdBy);
-    if (owner?.notificationToken) {
+
+    const { owner, partner } = await getOwnerAndPartner(userId);
+
+    if (partner?.notificationToken) {
       await sendExpoPush(
-        partner?.notificationToken
-          ? [partner.notificationToken]
-          : [owner.notificationToken],
+        [partner.notificationToken],
         `Note: ${title.trim()}`,
-        `${updatedNote.title.trim()} note has been updated!`,
+        `${owner?.name?.trim()} updated a note!`,
         { type: "note", noteId: updatedNote._id },
-        [partner?.userId ?? ""],
+        [partner.userId],
         String(updatedNote._id)
       );
     }
+
     res.json(updatedNote);
   } catch (err: any) {
     console.error("Error updating note:", err);
@@ -175,23 +176,30 @@ router.put("/:id", async (req, res) => {
 });
 
 /**
- * Delete a note
+ * ✅ Delete a note
+ * Body: { userId }
  */
 router.delete("/:id", async (req, res) => {
   try {
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ error: "userId is required" });
+
     const deletedNote = await Notes.findByIdAndDelete(req.params.id);
     if (!deletedNote) return res.status(404).json({ error: "Note not found" });
-    const { owner, partner } = await getOwnerAndPartner(deletedNote.createdBy);
-    if (owner?.notificationToken) {
+
+    const { owner, partner } = await getOwnerAndPartner(userId);
+
+    if (partner?.notificationToken) {
       await sendExpoPush(
-        [owner.notificationToken],
+        [partner.notificationToken],
         `Note deleted ❌`,
-        `${deletedNote.title.trim()} has been deleted!`,
+        `${owner?.name?.trim()} deleted "${deletedNote.title.trim()}"!`,
         undefined,
-        [owner.userId],
+        [partner.userId],
         String(deletedNote._id)
       );
     }
+
     res.json({ message: "Note deleted successfully" });
   } catch (err: any) {
     console.error("Error deleting note:", err);
@@ -200,15 +208,16 @@ router.delete("/:id", async (req, res) => {
 });
 
 /**
- * Pin or unpin a note
- * Body: { pinned: boolean }
+ * ✅ Pin or unpin a note
+ * Body: { pinned: boolean, userId }
  */
 router.patch("/pin/:id", async (req, res) => {
   try {
-    const { pinned } = req.body;
+    const { pinned, userId } = req.body;
     if (typeof pinned !== "boolean") {
       return res.status(400).json({ error: "pinned (boolean) is required" });
     }
+    if (!userId) return res.status(400).json({ error: "userId is required" });
 
     const updatedNote = await Notes.findByIdAndUpdate(
       req.params.id,
@@ -217,22 +226,17 @@ router.patch("/pin/:id", async (req, res) => {
     );
 
     if (!updatedNote) return res.status(404).json({ error: "Note not found" });
-    const action = updatedNote.pinned ? "pinned" : "unpinned";
-    const owner: IUser | null = await User.findOne({
-      userId: updatedNote.createdBy,
-    }).lean();
-    const partner: IUser | null = await User.findOne({
-      userId: owner?.partnerUserId,
-    }).lean();
-    if (owner?.notificationToken) {
+
+    const { owner, partner } = await getOwnerAndPartner(userId);
+    const action = pinned ? "pinned" : "unpinned";
+
+    if (partner?.notificationToken) {
       await sendExpoPush(
-        partner?.notificationToken
-          ? [partner.notificationToken]
-          : [owner.notificationToken],
+        [partner.notificationToken],
         `Note: ${updatedNote.title.trim()}`,
-        `This note has been ${action}!`,
+        `${owner?.name?.trim()} ${action} a note!`,
         { type: "note", noteId: updatedNote._id },
-        [partner?.userId ?? owner.userId],
+        [partner.userId],
         String(updatedNote._id)
       );
     }
