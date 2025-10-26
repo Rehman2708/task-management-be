@@ -199,7 +199,8 @@ router.post("/", async (req, res) => {
           taskId: t._id,
           isActive: t.status === TaskStatus.Active,
         },
-        [partner?.userId]
+        [partner?.userId],
+        String(t._id)
       );
     }
 
@@ -253,7 +254,8 @@ router.put("/:id", async (req, res) => {
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
-        [partner?.userId ?? owner.userId]
+        [partner?.userId ?? owner.userId],
+        String(task._id)
       );
     }
 
@@ -319,7 +321,8 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
-        [partner?.userId]
+        [partner?.userId],
+        String(task._id)
       );
     }
 
@@ -363,7 +366,8 @@ router.post("/:id/comment", async (req, res) => {
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
-        [partner?.userId]
+        [partner?.userId],
+        String(task._id)
       );
     }
 
@@ -410,7 +414,8 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
-        [partner?.userId]
+        [partner?.userId],
+        String(task._id)
       );
     }
 

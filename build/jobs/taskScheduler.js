@@ -34,7 +34,11 @@ export function initCron() {
                         // ⏰ Send reminders
                         if ([86400, 7200, 1800].includes(Math.round(diffSeconds))) {
                             const tokens = await getTokens(task.createdBy, task.assignedTo);
-                            await sendExpoPush(tokens, `Reminder: ${task.title}`, `Subtask "${subtask.title}" is due at ${due.toLocaleString()}`);
+                            await sendExpoPush(tokens, `Reminder: ${task.title}`, `Subtask "${subtask.title}" is due at ${due.toLocaleString()}`, {
+                                type: "task",
+                                taskId: task._id,
+                                isActive: task.status === TaskStatus.Active,
+                            }, [], String(task._id));
                         }
                         // ❌ Expire if overdue
                         if (due < now) {
@@ -96,5 +100,4 @@ export function initCron() {
             console.error("Cron job error:", err);
         }
     });
-    console.log("Task scheduler cron job started");
 }

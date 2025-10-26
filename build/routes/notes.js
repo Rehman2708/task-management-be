@@ -105,7 +105,7 @@ router.post("/", async (req, res) => {
             createdBy,
         });
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`, { type: "note", noteId: newNote._id }, [partner.userId]);
+            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`, { type: "note", noteId: newNote._id }, [partner.userId], String(newNote._id));
         }
         res.status(201).json(newNote);
     }
@@ -132,7 +132,7 @@ router.put("/:id", async (req, res) => {
         if (owner?.notificationToken) {
             await sendExpoPush(partner?.notificationToken
                 ? [partner.notificationToken]
-                : [owner.notificationToken], `Note: ${title.trim()}`, `${updatedNote.title.trim()} note has been updated!`, { type: "note", noteId: updatedNote._id }, [partner?.userId ?? ""]);
+                : [owner.notificationToken], `Note: ${title.trim()}`, `${updatedNote.title.trim()} note has been updated!`, { type: "note", noteId: updatedNote._id }, [partner?.userId ?? ""], String(updatedNote._id));
         }
         res.json(updatedNote);
     }
@@ -151,7 +151,7 @@ router.delete("/:id", async (req, res) => {
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(deletedNote.createdBy);
         if (owner?.notificationToken) {
-            await sendExpoPush([owner.notificationToken], `Note deleted ❌`, `${deletedNote.title.trim()} has been deleted!`, undefined, [owner.userId]);
+            await sendExpoPush([owner.notificationToken], `Note deleted ❌`, `${deletedNote.title.trim()} has been deleted!`, undefined, [owner.userId], String(deletedNote._id));
         }
         res.json({ message: "Note deleted successfully" });
     }
@@ -183,7 +183,7 @@ router.patch("/pin/:id", async (req, res) => {
         if (owner?.notificationToken) {
             await sendExpoPush(partner?.notificationToken
                 ? [partner.notificationToken]
-                : [owner.notificationToken], `Note: ${updatedNote.title.trim()}`, `This note has been ${action}!`, { type: "note", noteId: updatedNote._id }, [partner?.userId ?? owner.userId]);
+                : [owner.notificationToken], `Note: ${updatedNote.title.trim()}`, `This note has been ${action}!`, { type: "note", noteId: updatedNote._id }, [partner?.userId ?? owner.userId], String(updatedNote._id));
         }
         res.json(updatedNote);
     }

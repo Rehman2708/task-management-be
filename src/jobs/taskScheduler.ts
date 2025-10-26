@@ -48,7 +48,14 @@ export function initCron() {
               await sendExpoPush(
                 tokens,
                 `Reminder: ${task.title}`,
-                `Subtask "${subtask.title}" is due at ${due.toLocaleString()}`
+                `Subtask "${subtask.title}" is due at ${due.toLocaleString()}`,
+                {
+                  type: "task",
+                  taskId: task._id,
+                  isActive: task.status === TaskStatus.Active,
+                },
+                [],
+                String(task._id)
               );
             }
 
@@ -117,6 +124,4 @@ export function initCron() {
       console.error("Cron job error:", err);
     }
   });
-
-  console.log("Task scheduler cron job started");
 }

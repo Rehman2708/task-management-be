@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import fetch from "node-fetch";
 import Notification from "../models/Notification.js";
+import { ObjectId } from "mongoose";
 
 export interface ExpoPushData {
   [key: string]: any;
@@ -11,7 +12,8 @@ export async function sendExpoPush(
   title: string,
   body: string,
   data: ExpoPushData = {},
-  toUserIds: string[] = []
+  toUserIds: string[] = [],
+  groupId?: string // 🔥 new param: group notifications by this ID (e.g. taskId)
 ): Promise<void> {
   if (!expoTokens.length) return;
 
@@ -21,19 +23,35 @@ export async function sendExpoPush(
     title,
     body,
     data,
+
+    // Grouping info
+    ios: groupId
+      ? {
+          threadId: groupId, // iOS grouping
+        }
+      : undefined,
+
+    android: {
+      channelId: "task-updates", // make sure you create this channel in the app
+      ...(groupId ? { group: groupId } : {}),
+    },
   }));
 
+  // Send notifications to Expo
   await fetch("https://exp.host/--/api/v2/push/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(messages),
   });
+
+  // Save to DB (so you can fetch later)
   if (title && body && toUserIds.length) {
     await Notification.create({
       title,
       body,
       data,
       toUserIds,
+      ...(groupId ? { groupId } : {}), // store groupId for future use
     });
   }
 }

@@ -125,7 +125,7 @@ router.post("/", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(createdBy);
         const newVideo = await Video.create({ title, url, createdBy });
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Video: ${title.trim()}`, `${owner?.name?.trim()} added a video!`, { type: "video", videoData: newVideo }, [partner?.userId]);
+            await sendExpoPush([partner.notificationToken], `Video: ${title.trim()}`, `${owner?.name?.trim()} added a video!`, { type: "video", videoData: newVideo }, [partner?.userId], String(newVideo._id));
         }
         res.status(201).json(newVideo);
     }
@@ -145,7 +145,7 @@ router.delete("/:id", async (req, res) => {
         }
         const { owner } = await getOwnerAndPartner(deletedVideo.createdBy);
         if (owner?.notificationToken) {
-            await sendExpoPush([owner.notificationToken], "Video deleted ❌", `${deletedVideo.title.trim()} has been deleted!`, undefined, [owner.userId]);
+            await sendExpoPush([owner.notificationToken], "Video deleted ❌", `${deletedVideo.title.trim()} has been deleted!`, undefined, [owner.userId], String(deletedVideo._id));
         }
         res.json({ message: "Video deleted successfully" });
     }
@@ -168,7 +168,7 @@ router.patch("/:id/viewed", async (req, res) => {
         await video.save();
         const { owner } = await getOwnerAndPartner(video.createdBy);
         if (owner?.notificationToken) {
-            await sendExpoPush([owner.notificationToken], "Video Viewed ✅", `Your video "${video.title}" has been viewed!`, { type: "video", videoData: video }, [owner.userId]);
+            await sendExpoPush([owner.notificationToken], "Video Viewed ✅", `Your video "${video.title}" has been viewed!`, { type: "video", videoData: video }, [owner.userId], String(video._id));
         }
         res.json({ message: "Video marked as viewed", video });
     }
@@ -209,7 +209,7 @@ router.post("/:id/comment", async (req, res) => {
         // Notify partner if exists
         const { owner, partner } = await getOwnerAndPartner(createdBy);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Comment on video: ${video.title}`, `${enrichedComment.createdByDetails?.name || "Someone"} commented: "${text}"`, { type: "video", videoData: video }, [partner.userId]);
+            await sendExpoPush([partner.notificationToken], `Comment on video: ${video.title}`, `${enrichedComment.createdByDetails?.name || "Someone"} commented: "${text}"`, { type: "video", videoData: video }, [partner.userId], String(video._id));
         }
         // Send enriched comments back
         res.status(201).json({ comments: video.comments });

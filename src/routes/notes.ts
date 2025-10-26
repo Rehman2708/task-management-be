@@ -126,7 +126,8 @@ router.post("/", async (req, res) => {
         `Note: ${title.trim()}`,
         `${owner?.name?.trim()} created a note!`,
         { type: "note", noteId: newNote._id },
-        [partner.userId]
+        [partner.userId],
+        String(newNote._id)
       );
     }
     res.status(201).json(newNote);
@@ -162,7 +163,8 @@ router.put("/:id", async (req, res) => {
         `Note: ${title.trim()}`,
         `${updatedNote.title.trim()} note has been updated!`,
         { type: "note", noteId: updatedNote._id },
-        [partner?.userId ?? ""]
+        [partner?.userId ?? ""],
+        String(updatedNote._id)
       );
     }
     res.json(updatedNote);
@@ -186,7 +188,8 @@ router.delete("/:id", async (req, res) => {
         `Note deleted ❌`,
         `${deletedNote.title.trim()} has been deleted!`,
         undefined,
-        [owner.userId]
+        [owner.userId],
+        String(deletedNote._id)
       );
     }
     res.json({ message: "Note deleted successfully" });
@@ -229,7 +232,8 @@ router.patch("/pin/:id", async (req, res) => {
         `Note: ${updatedNote.title.trim()}`,
         `This note has been ${action}!`,
         { type: "note", noteId: updatedNote._id },
-        [partner?.userId ?? owner.userId]
+        [partner?.userId ?? owner.userId],
+        String(updatedNote._id)
       );
     }
 

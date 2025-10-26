@@ -175,7 +175,8 @@ router.post(
           `Video: ${title.trim()}`,
           `${owner?.name?.trim()} added a video!`,
           { type: "video", videoData: newVideo },
-          [partner?.userId]
+          [partner?.userId],
+          String(newVideo._id)
         );
       }
 
@@ -204,7 +205,8 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
         "Video deleted ❌",
         `${deletedVideo.title.trim()} has been deleted!`,
         undefined,
-        [owner.userId]
+        [owner.userId],
+        String(deletedVideo._id)
       );
     }
 
@@ -237,7 +239,8 @@ router.patch(
           "Video Viewed ✅",
           `Your video "${video.title}" has been viewed!`,
           { type: "video", videoData: video },
-          [owner.userId]
+          [owner.userId],
+          String(video._id)
         );
       }
 
@@ -293,7 +296,8 @@ router.post("/:id/comment", async (req: Request, res: Response) => {
           enrichedComment.createdByDetails?.name || "Someone"
         } commented: "${text}"`,
         { type: "video", videoData: video },
-        [partner.userId]
+        [partner.userId],
+        String(video._id)
       );
     }
 

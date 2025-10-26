@@ -166,7 +166,7 @@ router.post("/", async (req, res) => {
                 type: "task",
                 taskId: t._id,
                 isActive: t.status === TaskStatus.Active,
-            }, [partner?.userId]);
+            }, [partner?.userId], String(t._id));
         }
         res.status(201).json(t);
     }
@@ -211,7 +211,7 @@ router.put("/:id", async (req, res) => {
                 type: "task",
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
-            }, [partner?.userId ?? owner.userId]);
+            }, [partner?.userId ?? owner.userId], String(task._id));
         }
         res.json(task);
     }
@@ -266,7 +266,7 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
                 type: "task",
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
-            }, [partner?.userId]);
+            }, [partner?.userId], String(task._id));
         }
         res.json(task);
     }
@@ -299,7 +299,7 @@ router.post("/:id/comment", async (req, res) => {
                 type: "task",
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
-            }, [partner?.userId]);
+            }, [partner?.userId], String(task._id));
         }
         res.json(task);
     }
@@ -336,7 +336,7 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
                 type: "task",
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
-            }, [partner?.userId]);
+            }, [partner?.userId], String(task._id));
         }
         res.json(task);
     }
