@@ -32,7 +32,7 @@ export async function sendExpoPush(
       : undefined,
 
     android: {
-      channelId: "task-updates", // make sure you create this channel in the app
+      channelId: data.type,
       ...(groupId ? { group: groupId } : {}),
     },
   }));
