@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { sendExpoPush } from "./notifications.js";
 import { TaskStatus } from "../enum/task.js";
+import { NotificationData } from "../enum/notification.js";
 
 const router = Router();
 
@@ -195,7 +196,7 @@ router.post("/", async (req, res) => {
           t.assignedTo !== "Me" ? "for you" : ""
         }`,
         {
-          type: "task",
+          type: NotificationData.Task,
           taskId: t._id,
           isActive: t.status === TaskStatus.Active,
         },
@@ -250,7 +251,7 @@ router.put("/:id", async (req, res) => {
         `Task: ${task.title.trim()}`,
         `${updaterName} updated this task`,
         {
-          type: "task",
+          type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
@@ -271,8 +272,22 @@ router.put("/:id", async (req, res) => {
  */
 router.delete("/:id", async (req, res) => {
   try {
+    const { userId } = req.body || {};
     const task = await Task.findByIdAndDelete(req.params.id);
+    if (!userId) return res.status(400).json({ error: "userId is required" });
     if (!task) return res.status(404).json({ error: "Task not found" });
+    const { owner, partner } = await getOwnerAndPartner(userId);
+    if (partner?.notificationToken) {
+      await sendExpoPush(
+        [partner.notificationToken],
+        `Task: ${task.title.trim()}`,
+        `${owner?.name?.trim()} deleted this task!`,
+        { type: NotificationData.Task },
+        [partner.userId],
+        String(task._id)
+      );
+    }
+
     res.json({ message: "Task deleted successfully" });
   } catch (err: any) {
     console.error("Delete task error:", err);
@@ -317,7 +332,7 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
           subtask.title
         }"`,
         {
-          type: "task",
+          type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
@@ -362,7 +377,7 @@ router.post("/:id/comment", async (req, res) => {
         `Task: ${task.title.trim()} 💬`,
         `${commenterName} commented: "${text}"`,
         {
-          type: "task",
+          type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
@@ -410,7 +425,7 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
         `Task: ${task.title.trim()} 💬`,
         `${commenterName} commented on "${subtask.title}": "${text}"`,
         {
-          type: "task",
+          type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },

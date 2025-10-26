@@ -1,6 +1,7 @@
 import { Router } from "express";
 import User, { IUserDocument, IUser } from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
+import { NotificationData } from "../enum/notification.js";
 
 const router = Router();
 
@@ -171,7 +172,7 @@ router.post("/connect-partner", async (req, res) => {
         [user.notificationToken],
         `Partner Connected ❤️`,
         `You are connected with ${partner.name}🎉!`,
-        { type: "profile" },
+        { type: NotificationData.Profile },
         [userId]
       );
     }
@@ -180,7 +181,7 @@ router.post("/connect-partner", async (req, res) => {
         [partner.notificationToken],
         `Partner Connected ❤️`,
         `${user.name} connected with you🎉!`,
-        { type: "profile" },
+        { type: NotificationData.Profile },
         [partnerUserId]
       );
     }

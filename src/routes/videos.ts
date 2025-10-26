@@ -3,6 +3,7 @@ import User, { IUser } from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 import Video, { IVideo, IVideoComment } from "../models/Video.js";
+import { NotificationData } from "../enum/notification.js";
 
 const router = Router();
 
@@ -174,7 +175,7 @@ router.post(
           [partner.notificationToken],
           `Video: ${title.trim()}`,
           `${owner?.name?.trim()} added a video!`,
-          { type: "video", videoData: newVideo },
+          { type: NotificationData.Video, videoData: newVideo },
           [partner?.userId],
           String(newVideo._id)
         );
@@ -204,7 +205,7 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
         [owner.notificationToken],
         "Video deleted ❌",
         `${deletedVideo.title.trim()} has been deleted!`,
-        undefined,
+        { type: NotificationData.Video },
         [owner.userId],
         String(deletedVideo._id)
       );
@@ -238,7 +239,7 @@ router.patch(
           [owner.notificationToken],
           "Video Viewed ✅",
           `Your video "${video.title}" has been viewed!`,
-          { type: "video", videoData: video },
+          { type: NotificationData.Video, videoData: video },
           [owner.userId],
           String(video._id)
         );
@@ -295,7 +296,7 @@ router.post("/:id/comment", async (req: Request, res: Response) => {
         `${
           enrichedComment.createdByDetails?.name || "Someone"
         } commented: "${text}"`,
-        { type: "video", videoData: video },
+        { type: NotificationData.Video, videoData: video },
         [partner.userId],
         String(video._id)
       );

@@ -17,6 +17,11 @@ const SubtaskSchema = new mongoose.Schema(
       enum: Object.values(SubtaskStatus),
       default: SubtaskStatus.Pending,
     },
+    remindersSent: {
+      type: Map,
+      of: Boolean,
+      default: {},
+    },
     dueDateTime: { type: Date, required: true },
     completedAt: { type: Date, default: null },
     updatedBy: { type: String, default: null }, // userId who last updated this subtask

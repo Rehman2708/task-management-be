@@ -3,6 +3,7 @@ import Notes from "../models/Notes.js";
 import User from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
+import { NotificationData } from "../enum/notification.js";
 const router = Router();
 /**
  * Get all notes (optionally by user) with pagination
@@ -102,7 +103,7 @@ router.post("/", async (req, res) => {
         });
         // Send notification to the partner of the user performing the action
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`, { type: "note", noteId: newNote._id }, [partner.userId], String(newNote._id));
+            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`, { type: NotificationData.Note, noteId: newNote._id }, [partner.userId], String(newNote._id));
         }
         res.status(201).json(newNote);
     }
@@ -129,7 +130,7 @@ router.put("/:id", async (req, res) => {
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} updated a note!`, { type: "note", noteId: updatedNote._id }, [partner.userId], String(updatedNote._id));
+            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} updated a note!`, { type: NotificationData.Note, noteId: updatedNote._id }, [partner.userId], String(updatedNote._id));
         }
         res.json(updatedNote);
     }
@@ -152,7 +153,7 @@ router.delete("/:id", async (req, res) => {
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note deleted ❌`, `${owner?.name?.trim()} deleted "${deletedNote.title.trim()}"!`, undefined, [partner.userId], String(deletedNote._id));
+            await sendExpoPush([partner.notificationToken], `Note deleted ❌`, `${owner?.name?.trim()} deleted "${deletedNote.title.trim()}"!`, { type: NotificationData.Note }, [partner.userId], String(deletedNote._id));
         }
         res.json({ message: "Note deleted successfully" });
     }
@@ -179,7 +180,7 @@ router.patch("/pin/:id", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(userId);
         const action = pinned ? "pinned" : "unpinned";
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${updatedNote.title.trim()}`, `${owner?.name?.trim()} ${action} a note!`, { type: "note", noteId: updatedNote._id }, [partner.userId], String(updatedNote._id));
+            await sendExpoPush([partner.notificationToken], `Note: ${updatedNote.title.trim()}`, `${owner?.name?.trim()} ${action} a note!`, { type: NotificationData.Note, noteId: updatedNote._id }, [partner.userId], String(updatedNote._id));
         }
         res.json(updatedNote);
     }

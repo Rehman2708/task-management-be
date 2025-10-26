@@ -1,6 +1,7 @@
 import { Router } from "express";
 import User from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
+import { NotificationData } from "../enum/notification.js";
 const router = Router();
 async function formatUserResponse(u) {
     if (!u)
@@ -133,10 +134,10 @@ router.post("/connect-partner", async (req, res) => {
         await user.save();
         await partner.save();
         if (user?.notificationToken) {
-            await sendExpoPush([user.notificationToken], `Partner Connected ❤️`, `You are connected with ${partner.name}🎉!`, { type: "profile" }, [userId]);
+            await sendExpoPush([user.notificationToken], `Partner Connected ❤️`, `You are connected with ${partner.name}🎉!`, { type: NotificationData.Profile }, [userId]);
         }
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Partner Connected ❤️`, `${user.name} connected with you🎉!`, { type: "profile" }, [partnerUserId]);
+            await sendExpoPush([partner.notificationToken], `Partner Connected ❤️`, `${user.name} connected with you🎉!`, { type: NotificationData.Profile }, [partnerUserId]);
         }
         res.json({
             message: "Partner connected successfully",

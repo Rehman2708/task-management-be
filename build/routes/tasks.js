@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { sendExpoPush } from "./notifications.js";
 import { TaskStatus } from "../enum/task.js";
+import { NotificationData } from "../enum/notification.js";
 const router = Router();
 /**
  * Utility: resolve display name
@@ -163,7 +164,7 @@ router.post("/", async (req, res) => {
         const creatorName = await getDisplayName(t.createdBy);
         if (partner?.notificationToken) {
             await sendExpoPush([partner.notificationToken], `Task: ${t.title.trim()}`, `${creatorName} created a new task ${t.assignedTo !== "Me" ? "for you" : ""}`, {
-                type: "task",
+                type: NotificationData.Task,
                 taskId: t._id,
                 isActive: t.status === TaskStatus.Active,
             }, [partner?.userId], String(t._id));
@@ -208,7 +209,7 @@ router.put("/:id", async (req, res) => {
             await sendExpoPush(partner?.notificationToken
                 ? [partner.notificationToken]
                 : [owner.notificationToken], `Task: ${task.title.trim()}`, `${updaterName} updated this task`, {
-                type: "task",
+                type: NotificationData.Task,
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
             }, [partner?.userId ?? owner.userId], String(task._id));
@@ -225,9 +226,16 @@ router.put("/:id", async (req, res) => {
  */
 router.delete("/:id", async (req, res) => {
     try {
+        const { userId } = req.body || {};
         const task = await Task.findByIdAndDelete(req.params.id);
+        if (!userId)
+            return res.status(400).json({ error: "userId is required" });
         if (!task)
             return res.status(404).json({ error: "Task not found" });
+        const { owner, partner } = await getOwnerAndPartner(userId);
+        if (partner?.notificationToken) {
+            await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()}`, `${owner?.name?.trim()} deleted this task!`, { type: NotificationData.Task }, [partner.userId], String(task._id));
+        }
         res.json({ message: "Task deleted successfully" });
     }
     catch (err) {
@@ -263,7 +271,7 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
         const actorName = await getDisplayName(userId);
         if (partner?.notificationToken) {
             await sendExpoPush([partner?.notificationToken], `Task: ${task.title.trim()}`, `${actorName} ${status === "Completed" ? "completed" : "reopened"} "${subtask.title}"`, {
-                type: "task",
+                type: NotificationData.Task,
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
             }, [partner?.userId], String(task._id));
@@ -296,7 +304,7 @@ router.post("/:id/comment", async (req, res) => {
         const commenterName = await getDisplayName(by);
         if (partner?.notificationToken) {
             await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented: "${text}"`, {
-                type: "task",
+                type: NotificationData.Task,
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
             }, [partner?.userId], String(task._id));
@@ -333,7 +341,7 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
         const commenterName = await getDisplayName(userId);
         if (partner?.notificationToken) {
             await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented on "${subtask.title}": "${text}"`, {
-                type: "task",
+                type: NotificationData.Task,
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
             }, [partner?.userId], String(task._id));

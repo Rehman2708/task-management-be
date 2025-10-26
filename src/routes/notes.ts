@@ -3,6 +3,7 @@ import Notes from "../models/Notes.js";
 import User, { IUser } from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
+import { NotificationData } from "../enum/notification.js";
 
 const router = Router();
 
@@ -123,7 +124,7 @@ router.post("/", async (req, res) => {
         [partner.notificationToken],
         `Note: ${title.trim()}`,
         `${owner?.name?.trim()} created a note!`,
-        { type: "note", noteId: newNote._id },
+        { type: NotificationData.Note, noteId: newNote._id },
         [partner.userId],
         String(newNote._id)
       );
@@ -162,7 +163,7 @@ router.put("/:id", async (req, res) => {
         [partner.notificationToken],
         `Note: ${title.trim()}`,
         `${owner?.name?.trim()} updated a note!`,
-        { type: "note", noteId: updatedNote._id },
+        { type: NotificationData.Note, noteId: updatedNote._id },
         [partner.userId],
         String(updatedNote._id)
       );
@@ -194,7 +195,7 @@ router.delete("/:id", async (req, res) => {
         [partner.notificationToken],
         `Note deleted ❌`,
         `${owner?.name?.trim()} deleted "${deletedNote.title.trim()}"!`,
-        undefined,
+        { type: NotificationData.Note },
         [partner.userId],
         String(deletedNote._id)
       );
@@ -235,7 +236,7 @@ router.patch("/pin/:id", async (req, res) => {
         [partner.notificationToken],
         `Note: ${updatedNote.title.trim()}`,
         `${owner?.name?.trim()} ${action} a note!`,
-        { type: "note", noteId: updatedNote._id },
+        { type: NotificationData.Note, noteId: updatedNote._id },
         [partner.userId],
         String(updatedNote._id)
       );

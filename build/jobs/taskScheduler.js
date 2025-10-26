@@ -3,6 +3,7 @@ import Task from "../models/Task.js";
 import { AssignedTo, Frequency, SubtaskStatus, TaskStatus, } from "../enum/task.js";
 import { sendExpoPush } from "../routes/notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
+import { NotificationData } from "../enum/notification.js";
 // Helper to get tokens for assignment
 async function getTokens(user, assignedTo) {
     const tokens = [];
@@ -17,6 +18,15 @@ async function getTokens(user, assignedTo) {
     }
     return tokens;
 }
+// Convert minutes to a human-readable string
+function formatTime(minutes) {
+    if (minutes >= 60) {
+        const hr = Math.floor(minutes / 60);
+        const min = Math.round(minutes % 60);
+        return min > 0 ? `${hr} hr ${min} min` : `${hr} hr`;
+    }
+    return `${Math.round(minutes)} min`;
+}
 // Main cron job function
 export function initCron() {
     cron.schedule("*/5 * * * *", async () => {
@@ -30,17 +40,31 @@ export function initCron() {
                 for (const subtask of task.subtasks) {
                     if (subtask.status === SubtaskStatus.Pending) {
                         const due = new Date(subtask.dueDateTime);
-                        const diffSeconds = (due.getTime() - now.getTime()) / 1000;
-                        // ⏰ Send reminders
-                        if ([86400, 7200, 1800].includes(Math.round(diffSeconds))) {
-                            const tokens = await getTokens(task.createdBy, task.assignedTo);
-                            await sendExpoPush(tokens, `Reminder: ${task.title}`, `Subtask "${subtask.title}" is due at ${due.toLocaleString()}`, {
-                                type: "task",
-                                taskId: task._id,
-                                isActive: task.status === TaskStatus.Active,
-                            }, [], String(task._id));
+                        const diffMinutes = (due.getTime() - now.getTime()) / (1000 * 60);
+                        if (!subtask.remindersSent)
+                            subtask.remindersSent = new Map();
+                        const reminders = [
+                            { time: 360, range: [358, 362] }, // 6 hr
+                            { time: 120, range: [118, 122] }, // 2 hr
+                            { time: 30, range: [28, 32] }, // 30 min
+                            { time: 10, range: [8, 12] }, // 10 min
+                        ];
+                        for (const r of reminders) {
+                            const key = r.time.toString();
+                            if (diffMinutes >= r.range[0] &&
+                                diffMinutes <= r.range[1] &&
+                                !subtask.remindersSent.get(key)) {
+                                const tokens = await getTokens(task.createdBy, task.assignedTo);
+                                const timeString = formatTime(diffMinutes);
+                                await sendExpoPush(tokens, `Reminder: ${task.title}`, `Subtask "${subtask.title}" is due in approximately ${timeString}.`, {
+                                    type: NotificationData.Task,
+                                    taskId: task._id,
+                                    isActive: task.status === TaskStatus.Active,
+                                }, [], String(task._id));
+                                subtask.remindersSent.set(key, true);
+                                updated = true;
+                            }
                         }
-                        // ❌ Expire if overdue
                         if (due < now) {
                             subtask.status = SubtaskStatus.Expired;
                             subtask.completedAt = due;
@@ -58,7 +82,6 @@ export function initCron() {
                         allDone = false;
                     }
                 }
-                // ✅ Update task status
                 if (allDone) {
                     task.status = TaskStatus.Completed;
                     updated = true;
@@ -69,7 +92,7 @@ export function initCron() {
                 }
                 if (updated) {
                     await task.save();
-                    // 🔄 Regenerate recurring tasks
+                    // Regenerate recurring tasks
                     if ([Frequency.Daily, Frequency.Weekly].includes(task.frequency)) {
                         const newSubtasks = task.subtasks.map((st) => {
                             const due = new Date(st.dueDateTime);
