@@ -41,6 +41,7 @@ router.get(
       const page = Math.max(Number(req.query.page) || 1, 1);
       const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
 
+      // Cleanup old watched videos
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
       await Video.deleteMany({
         partnerWatched: true,
@@ -58,8 +59,15 @@ router.get(
       const totalCount = await Video.countDocuments(filter);
       const totalPages = Math.ceil(totalCount / pageSize);
 
+      // Sort: unwatched first (partnerWatched: false/null), then watched (partnerWatched: true)
       const videoIds = (
-        await Video.find(filter).sort({ createdAt: -1 }).select("_id").lean()
+        await Video.find(filter)
+          .sort({
+            partnerWatched: 1, // false/null first, true later
+            createdAt: -1, // newest first within each group
+          })
+          .select("_id")
+          .lean()
       ).map((v) => v._id);
 
       const pagedIds = videoIds.slice((page - 1) * pageSize, page * pageSize);
@@ -67,6 +75,7 @@ router.get(
         IVideo[]
       >();
 
+      // Update missing or outdated user details in videos
       const bulkOps = [];
       for (const video of videos) {
         const user = await User.findOne({
@@ -89,11 +98,14 @@ router.get(
           video.createdByDetails = newDetails;
         }
       }
+
       if (bulkOps.length) await Video.bulkWrite(bulkOps);
 
+      // Preserve order of pagedIds
       const sortedVideos = pagedIds.map((id) =>
         videos.find((v) => v._id.equals(id))
       );
+
       res.json({ videos: sortedVideos, totalPages, currentPage: page });
     } catch (err: any) {
       console.error("Error fetching videos:", err);
