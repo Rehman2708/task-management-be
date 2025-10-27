@@ -5,19 +5,26 @@ import { NotificationData } from "../enum/notification.js";
 
 const router = Router();
 
+interface Theme {
+  light: string;
+  dark: string;
+}
+
+interface PartnerResponse {
+  userId: string;
+  name: string;
+  image: string | null;
+  theme: Theme | null;
+}
+
 interface UserResponse {
   userId: string;
   name: string;
-  partner: {
-    userId: string;
-    name: string;
-    image: string | null;
-    theme: { light: string; dark: string };
-  } | null;
+  partner: PartnerResponse | null;
   createdAt: Date;
   updatedAt: Date;
   image: string | null;
-  theme: { light: string; dark: string };
+  theme: Theme | null;
 }
 
 async function formatUserResponse(
@@ -25,12 +32,9 @@ async function formatUserResponse(
 ): Promise<UserResponse | null> {
   if (!u) return null;
 
-  let partner: IUser | null = null;
-  if (u.partnerUserId) {
-    partner = await User.findOne({
-      userId: u.partnerUserId,
-    }).lean<IUser | null>();
-  }
+  const partner = u.partnerUserId
+    ? await User.findOne({ userId: u.partnerUserId }).lean<IUser | null>()
+    : null;
 
   return {
     userId: u.userId,
@@ -39,7 +43,7 @@ async function formatUserResponse(
       ? {
           userId: partner.userId,
           name: partner.name,
-          image: partner.image ?? "",
+          image: partner.image ?? null,
           theme: partner.theme ?? null,
         }
       : null,
@@ -51,38 +55,34 @@ async function formatUserResponse(
 }
 
 /**
- * 🟢 Register API
+ * 🟢 Register
  */
 router.post("/register", async (req, res) => {
   try {
     const { name, userId, partnerUserId, password, notificationToken } =
       req.body || {};
 
-    if (!name || !userId || !password) {
+    if (!name || !userId || !password)
       return res
         .status(400)
         .json({ message: "name, userId, and password are required" });
-    }
 
-    const existing = await User.findOne({ userId });
-    if (existing) {
+    if (await User.exists({ userId }))
       return res.status(409).json({ message: "User already exists" });
-    }
 
     let partner = null;
     if (partnerUserId) {
       partner = await User.findOne({ userId: partnerUserId });
-      if (!partner) {
+      if (!partner)
         return res.status(400).json({ message: "Partner userId not found" });
-      }
     }
 
     const newUser = await User.create({
       name,
       userId,
-      partnerUserId: partner ? partner.userId : null,
       password,
       notificationToken,
+      partnerUserId: partner?.userId ?? null,
     });
 
     if (partner) {
@@ -101,29 +101,28 @@ router.post("/register", async (req, res) => {
 });
 
 /**
- * 🟢 Login API
+ * 🟢 Login
  */
 router.post("/login", async (req, res) => {
   try {
     const { userId, password, notificationToken } = req.body || {};
 
-    if (!userId || !password) {
+    if (!userId || !password)
       return res
         .status(400)
         .json({ message: "userId and password are required" });
+
+    const user = await User.findOne({ userId, password });
+    if (!user) return res.status(401).json({ message: "Invalid credentials" });
+
+    if (notificationToken) {
+      user.notificationToken = notificationToken;
+      await user.save();
     }
 
-    const u = await User.findOne({ userId, password });
-    if (!u) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-    if (notificationToken) {
-      u.notificationToken = notificationToken;
-      await u.save();
-    }
     res.json({
       message: "Login successful",
-      user: await formatUserResponse(u),
+      user: await formatUserResponse(user),
     });
   } catch (err) {
     console.error("Login error:", err);
@@ -132,59 +131,67 @@ router.post("/login", async (req, res) => {
 });
 
 /**
- * 🟢 Connect Partner API
+ * 🟢 Connect Partner
  */
 router.post("/connect-partner", async (req, res) => {
   try {
     const { userId, partnerUserId } = req.body || {};
 
-    if (!userId || !partnerUserId) {
+    if (!userId || !partnerUserId)
       return res
         .status(400)
         .json({ message: "userId and partnerUserId are required" });
-    }
 
-    const user = await User.findOne({ userId });
-    const partner = await User.findOne({ userId: partnerUserId });
+    const [user, partner] = await Promise.all([
+      User.findOne({ userId }),
+      User.findOne({ userId: partnerUserId }),
+    ]);
 
     if (!user) return res.status(404).json({ message: "User not found" });
     if (!partner) return res.status(404).json({ message: "Partner not found" });
 
-    // ✅ NEW: Check if either is already connected
-    if (user.partnerUserId) {
+    if (user.partnerUserId)
       return res
         .status(400)
         .json({ message: "This user is already connected to someone else" });
-    }
-    if (partner.partnerUserId) {
-      return res.status(400).json({
-        message: "The partner user is already connected to someone else",
-      });
-    }
+
+    if (partner.partnerUserId)
+      return res
+        .status(400)
+        .json({
+          message: "The partner user is already connected to someone else",
+        });
 
     user.partnerUserId = partner.userId;
     partner.partnerUserId = user.userId;
 
-    await user.save();
-    await partner.save();
-    if (user?.notificationToken) {
-      await sendExpoPush(
-        [user.notificationToken],
-        `Partner Connected ❤️`,
-        `You are connected with ${partner.name}🎉!`,
-        { type: NotificationData.Profile },
-        [userId]
+    await Promise.all([user.save(), partner.save()]);
+
+    const notifications = [];
+    if (user.notificationToken)
+      notifications.push(
+        sendExpoPush(
+          [user.notificationToken],
+          "Partner Connected ❤️",
+          `You are connected with ${partner.name} 🎉!`,
+          { type: NotificationData.Profile },
+          [userId]
+        )
       );
-    }
-    if (partner?.notificationToken) {
-      await sendExpoPush(
-        [partner.notificationToken],
-        `Partner Connected ❤️`,
-        `${user.name} connected with you🎉!`,
-        { type: NotificationData.Profile },
-        [partnerUserId]
+
+    if (partner.notificationToken)
+      notifications.push(
+        sendExpoPush(
+          [partner.notificationToken],
+          "Partner Connected ❤️",
+          `${user.name} connected with you 🎉!`,
+          { type: NotificationData.Profile },
+          [partnerUserId]
+        )
       );
-    }
+
+    await Promise.all(notifications);
+
     res.json({
       message: "Partner connected successfully",
       user: await formatUserResponse(user),
@@ -196,18 +203,16 @@ router.post("/connect-partner", async (req, res) => {
 });
 
 /**
- * 🟢 Get User Details API
+ * 🟢 Get User Details
  */
 router.get("/:userId", async (req, res) => {
   try {
-    const { userId } = req.params;
-    const u = await User.findOne({ userId });
-
-    if (!u) return res.status(404).json({ message: "User not found" });
+    const user = await User.findOne({ userId: req.params.userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     res.json({
       message: "User details fetched successfully",
-      user: await formatUserResponse(u),
+      user: await formatUserResponse(user),
     });
   } catch (err) {
     console.error("Get user error:", err);
@@ -216,27 +221,22 @@ router.get("/:userId", async (req, res) => {
 });
 
 /**
- * 🟢 Logout API (Clear Notification Token)
+ * 🟢 Logout
  */
 router.post("/logout", async (req, res) => {
   try {
     const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ message: "userId is required" });
 
-    if (!userId) {
-      return res.status(400).json({ message: "userId is required" });
-    }
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const u = await User.findOne({ userId });
-    if (!u) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    u.notificationToken = null;
-    await u.save();
+    user.notificationToken = null;
+    await user.save();
 
     res.json({
       message: "Logout successful, notification token cleared",
-      user: await formatUserResponse(u),
+      user: await formatUserResponse(user),
     });
   } catch (err) {
     console.error("Logout error:", err);
@@ -245,29 +245,23 @@ router.post("/logout", async (req, res) => {
 });
 
 /**
- * 🟢 Update Profile API
+ * 🟢 Update Profile
  */
 router.put("/update-profile", async (req, res) => {
   try {
     const { userId, name, image } = req.body || {};
+    if (!userId) return res.status(400).json({ message: "userId is required" });
 
-    if (!userId) {
-      return res.status(400).json({ message: "userId is required" });
-    }
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const u = await User.findOne({ userId });
-    if (!u) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (name) u.name = name;
-    if (image !== undefined) u.image = image;
-
-    await u.save();
+    if (name) user.name = name;
+    if (image !== undefined) user.image = image;
+    await user.save();
 
     res.json({
       message: "Profile updated successfully",
-      user: await formatUserResponse(u),
+      user: await formatUserResponse(user),
     });
   } catch (err) {
     console.error("Update profile error:", err);
@@ -276,33 +270,26 @@ router.put("/update-profile", async (req, res) => {
 });
 
 /**
- * 🟢 Update Theme API
+ * 🟢 Update Theme
  */
 router.put("/update-theme", async (req, res) => {
   try {
     const { userId, theme } = req.body || {};
+    if (!userId) return res.status(400).json({ message: "userId is required" });
 
-    if (!userId) {
-      return res.status(400).json({ message: "userId is required" });
-    }
-
-    if (!theme || typeof theme !== "object") {
+    if (!theme || typeof theme !== "object")
       return res.status(400).json({ message: "theme object is required" });
-    }
 
     const { light, dark } = theme;
-    if (!light || !dark) {
-      return res.status(400).json({ message: "Both color required" });
-    }
+    if (!light || !dark)
+      return res
+        .status(400)
+        .json({ message: "Both light and dark colors are required" });
 
     const user = await User.findOne({ userId });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (light) user.theme.light = light;
-    if (dark) user.theme.dark = dark;
-
+    user.theme = { light, dark };
     await user.save();
 
     res.json({
@@ -316,33 +303,28 @@ router.put("/update-theme", async (req, res) => {
 });
 
 /**
- * 🟢 Update Password API
+ * 🟢 Update Password
  */
 router.put("/update-password", async (req, res) => {
   try {
     const { userId, oldPassword, newPassword } = req.body || {};
+    if (!userId || !oldPassword || !newPassword)
+      return res.status(400).json({
+        message: "userId, oldPassword, and newPassword are required",
+      });
 
-    if (!userId || !oldPassword || !newPassword) {
-      return res
-        .status(400)
-        .json({ message: "userId, oldPassword, and newPassword are required" });
-    }
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const u = await User.findOne({ userId });
-    if (!u) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (u.password !== oldPassword) {
+    if (user.password !== oldPassword)
       return res.status(401).json({ message: "Old password is incorrect" });
-    }
 
-    u.password = newPassword;
-    await u.save();
+    user.password = newPassword;
+    await user.save();
 
     res.json({
       message: "Password updated successfully",
-      user: await formatUserResponse(u),
+      user: await formatUserResponse(user),
     });
   } catch (err) {
     console.error("Update password error:", err);

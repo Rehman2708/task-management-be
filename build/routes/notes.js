@@ -11,31 +11,35 @@ const router = Router();
 router.get("/:ownerUserId", async (req, res) => {
     try {
         const { ownerUserId } = req.params;
-        const page = Math.max(parseInt(req.query.page) || 1, 1);
-        const pageSize = Math.max(parseInt(req.query.pageSize) || 10, 1);
-        const filter = {};
-        if (ownerUserId) {
-            const owner = await User.findOne({ userId: ownerUserId }).lean();
-            const partnerUserId = owner?.partnerUserId;
-            filter.createdBy = {
-                $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
-            };
-        }
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
+        const owner = await User.findOne({ userId: ownerUserId }).lean();
+        const filter = owner
+            ? {
+                createdBy: {
+                    $in: owner.partnerUserId
+                        ? [ownerUserId, owner.partnerUserId]
+                        : [ownerUserId],
+                },
+            }
+            : {};
         const totalCount = await Notes.countDocuments(filter);
-        const totalPages = Math.ceil(totalCount / pageSize);
         const notes = await Notes.find(filter)
             .sort({ pinned: -1, createdAt: -1 })
             .skip((page - 1) * pageSize)
             .limit(pageSize)
             .lean();
+        const userCache = {};
         await Promise.all(notes.map(async (note) => {
-            const user = await User.findOne({ userId: note.createdBy }).lean();
-            if (!user)
-                return note;
-            const latestDetails = {
-                name: user.name,
-                image: user.image || "",
-            };
+            const userId = note.createdBy;
+            if (!userCache[userId]) {
+                const user = await User.findOne({ userId }).lean();
+                if (user)
+                    userCache[userId] = { name: user.name, image: user.image || "" };
+            }
+            const latestDetails = userCache[userId];
+            if (!latestDetails)
+                return;
             if (!note.createdByDetails ||
                 note.createdByDetails.name !== latestDetails.name ||
                 note.createdByDetails.image !== latestDetails.image) {
@@ -44,11 +48,10 @@ router.get("/:ownerUserId", async (req, res) => {
                 });
                 note.createdByDetails = latestDetails;
             }
-            return note;
         }));
         res.json({
             notes,
-            totalPages,
+            totalPages: Math.ceil(totalCount / pageSize),
             currentPage: page,
         });
     }
@@ -58,50 +61,37 @@ router.get("/:ownerUserId", async (req, res) => {
     }
 });
 /**
- * ✅ Get a single note by ID
+ * Get a single note by ID
  */
 router.get("/note/:id", async (req, res) => {
     try {
         const note = await Notes.findById(req.params.id).lean();
-        if (!note) {
+        if (!note)
             return res.status(404).json({ error: "Note not found" });
-        }
         const user = await User.findOne({ userId: note.createdBy }).lean();
         if (user) {
-            note.createdByDetails = {
-                name: user.name,
-                image: user.image || "",
-            };
+            note.createdByDetails = { name: user.name, image: user.image || "" };
         }
         res.json(note);
     }
     catch (err) {
         console.error("Error fetching single note:", err);
-        res
-            .status(500)
-            .json({ error: err.message || "Failed to fetch single note" });
+        res.status(500).json({ error: err.message || "Failed to fetch note" });
     }
 });
 /**
- * ✅ Create a new note
- * Body: { image, title, note }
+ * Create a new note
  */
 router.post("/", async (req, res) => {
     try {
         const { image, title, note, createdBy } = req.body || {};
-        const { owner, partner } = await getOwnerAndPartner(createdBy);
         if (!title || !note || !createdBy) {
             return res
                 .status(400)
                 .json({ error: "title, note and createdBy are required" });
         }
-        const newNote = await Notes.create({
-            image,
-            title,
-            note,
-            createdBy,
-        });
-        // Send notification to the partner of the user performing the action
+        const { owner, partner } = await getOwnerAndPartner(createdBy);
+        const newNote = await Notes.create({ image, title, note, createdBy });
         if (partner?.notificationToken) {
             await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`, { type: NotificationData.Note, noteId: newNote._id }, [partner.userId], String(newNote._id));
         }
@@ -113,18 +103,16 @@ router.post("/", async (req, res) => {
     }
 });
 /**
- * ✅ Update a note
- * Body: { image, title, note, userId }
+ * Update a note
  */
 router.put("/:id", async (req, res) => {
     try {
         const { image, title, note, userId } = req.body || {};
-        if (!title)
-            return res.status(400).json({ error: "title is required" });
-        if (!note)
-            return res.status(400).json({ error: "note is required" });
-        if (!userId)
-            return res.status(400).json({ error: "userId is required" });
+        if (!title || !note || !userId) {
+            return res
+                .status(400)
+                .json({ error: "title, note, and userId are required" });
+        }
         const updatedNote = await Notes.findByIdAndUpdate(req.params.id, { image, title, note, updatedAt: new Date() }, { new: true });
         if (!updatedNote)
             return res.status(404).json({ error: "Note not found" });
@@ -140,8 +128,7 @@ router.put("/:id", async (req, res) => {
     }
 });
 /**
- * ✅ Delete a note
- * Body: { userId }
+ * Delete a note
  */
 router.delete("/:id", async (req, res) => {
     try {
@@ -163,24 +150,22 @@ router.delete("/:id", async (req, res) => {
     }
 });
 /**
- * ✅ Pin or unpin a note
- * Body: { pinned: boolean, userId }
+ * Pin or unpin a note
  */
 router.patch("/pin/:id", async (req, res) => {
     try {
-        const { pinned, userId } = req.body;
-        if (typeof pinned !== "boolean") {
-            return res.status(400).json({ error: "pinned (boolean) is required" });
+        const { pinned, userId } = req.body || {};
+        if (typeof pinned !== "boolean" || !userId) {
+            return res
+                .status(400)
+                .json({ error: "pinned (boolean) and userId are required" });
         }
-        if (!userId)
-            return res.status(400).json({ error: "userId is required" });
         const updatedNote = await Notes.findByIdAndUpdate(req.params.id, { pinned }, { new: true });
         if (!updatedNote)
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
-        const action = pinned ? "pinned" : "unpinned";
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${updatedNote.title.trim()}`, `${owner?.name?.trim()} ${action} a note!`, { type: NotificationData.Note, noteId: updatedNote._id }, [partner.userId], String(updatedNote._id));
+            await sendExpoPush([partner.notificationToken], `Note: ${updatedNote.title.trim()}`, `${owner?.name?.trim()} ${pinned ? "pinned" : "unpinned"} a note!`, { type: NotificationData.Note, noteId: updatedNote._id }, [partner.userId], String(updatedNote._id));
         }
         res.json(updatedNote);
     }

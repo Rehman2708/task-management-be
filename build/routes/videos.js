@@ -1,62 +1,48 @@
 import { Router } from "express";
 import User from "../models/User.js";
+import Video from "../models/Video.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
-import Video from "../models/Video.js";
 import { NotificationData } from "../enum/notification.js";
 const router = Router();
 async function enrichComment(comment) {
     if (!comment?.createdBy)
         return comment;
     const user = await User.findOne({ userId: comment.createdBy }).lean();
-    if (!user)
-        return comment;
-    comment.createdByDetails = {
-        name: user.name,
-        image: user.image || "",
-    };
+    if (user) {
+        comment.createdByDetails = {
+            name: user.name,
+            image: user.image || "",
+        };
+    }
     return comment;
 }
 /**
- * GET /videos/:ownerUserId
- * Query params: ?page=<number> (default 1)  ?pageSize=<number> (default 10)
- * Returns paginated globally shuffled videos
+ * GET /videos/:ownerUserId?page=1&pageSize=10
+ * Returns paginated partner + owner videos
  */
 router.get("/:ownerUserId", async (req, res) => {
     try {
         const { ownerUserId } = req.params;
-        const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-        const pageSize = Math.max(parseInt(req.query.pageSize || "10", 10), 1);
-        // Delete videos that have been viewed more than 24 hrs ago
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
         const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
         await Video.deleteMany({
             partnerWatched: true,
-            viewedAt: { $lte: cutoff }, // older than 24 hrs
+            viewedAt: { $lte: cutoff },
         });
-        // Build filter for fetching videos
-        const filter = {};
-        if (ownerUserId) {
-            const owner = await User.findOne({ userId: ownerUserId }).lean();
-            const partnerUserId = owner?.partnerUserId;
-            filter.createdBy = {
+        const owner = await User.findOne({ userId: ownerUserId }).lean();
+        const partnerUserId = owner?.partnerUserId;
+        const filter = {
+            createdBy: {
                 $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
-            };
-        }
-        // Get total count
+            },
+        };
         const totalCount = await Video.countDocuments(filter);
         const totalPages = Math.ceil(totalCount / pageSize);
-        // Fetch all matching video IDs for global shuffle
-        const allVideoIds = await Video.find(filter)
-            .sort({ createdAt: -1 })
-            .select("_id")
-            .lean();
-        const shuffledIds = allVideoIds.map((v) => v._id);
-        // .sort(() => Math.random() - 0.5);
-        // Paginate the shuffled IDs
-        const pagedIds = shuffledIds.slice((page - 1) * pageSize, page * pageSize);
-        // Fetch paginated videos
+        const videoIds = (await Video.find(filter).sort({ createdAt: -1 }).select("_id").lean()).map((v) => v._id);
+        const pagedIds = videoIds.slice((page - 1) * pageSize, page * pageSize);
         const videos = await Video.find({ _id: { $in: pagedIds } }).lean();
-        // Bulk update createdByDetails if needed
         const bulkOps = [];
         for (const video of videos) {
             const user = await User.findOne({
@@ -64,22 +50,21 @@ router.get("/:ownerUserId", async (req, res) => {
             }).lean();
             if (!user)
                 continue;
-            const latestDetails = { name: user.name, image: user.image || "" };
+            const newDetails = { name: user.name, image: user.image || "" };
             if (!video.createdByDetails ||
-                video.createdByDetails.name !== latestDetails.name ||
-                video.createdByDetails.image !== latestDetails.image) {
+                video.createdByDetails.name !== newDetails.name ||
+                video.createdByDetails.image !== newDetails.image) {
                 bulkOps.push({
                     updateOne: {
                         filter: { _id: video._id },
-                        update: { createdByDetails: latestDetails },
+                        update: { createdByDetails: newDetails },
                     },
                 });
-                video.createdByDetails = latestDetails;
+                video.createdByDetails = newDetails;
             }
         }
-        if (bulkOps.length > 0)
+        if (bulkOps.length)
             await Video.bulkWrite(bulkOps);
-        // Sort videos according to shuffled order
         const sortedVideos = pagedIds.map((id) => videos.find((v) => v._id.equals(id)));
         res.json({ videos: sortedVideos, totalPages, currentPage: page });
     }
@@ -90,43 +75,41 @@ router.get("/:ownerUserId", async (req, res) => {
 });
 /**
  * GET /videos/all/:ownerUserId
- * Returns ALL shuffled videos with only title, createdAt, createdByDetails
+ * Returns all partner + owner videos (title, createdAt, createdByDetails)
  */
 router.get("/all/:ownerUserId", async (req, res) => {
     try {
         const { ownerUserId } = req.params;
-        const filter = {};
-        if (ownerUserId) {
-            const owner = await User.findOne({ userId: ownerUserId }).lean();
-            const partnerUserId = owner?.partnerUserId;
-            filter.createdBy = {
+        const owner = await User.findOne({ userId: ownerUserId }).lean();
+        const partnerUserId = owner?.partnerUserId;
+        const filter = {
+            createdBy: {
                 $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
-            };
-        }
-        const allVideos = await Video.find(filter, "title createdAt createdByDetails").lean();
-        res.json({ videos: allVideos });
+            },
+        };
+        const videos = await Video.find(filter, "title createdAt createdByDetails").lean();
+        res.json({ videos });
     }
     catch (err) {
-        console.error("Error fetching all shuffled videos:", err);
+        console.error("Error fetching all videos:", err);
         res.status(500).json({ error: err.message || "Failed to fetch videos" });
     }
 });
 /**
  * POST /videos
- * Body: { title: string; url: string; createdBy: string }
+ * Body: { title, url, createdBy }
  */
 router.post("/", async (req, res) => {
     try {
         const { title, url, createdBy } = req.body;
-        if (!title || !url || !createdBy) {
+        if (!title || !url || !createdBy)
             return res
                 .status(400)
                 .json({ error: "title, url and createdBy are required" });
-        }
         const { owner, partner } = await getOwnerAndPartner(createdBy);
         const newVideo = await Video.create({ title, url, createdBy });
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Video: ${title.trim()}`, `${owner?.name?.trim()} added a video!`, { type: NotificationData.Video, videoData: newVideo }, [partner?.userId], String(newVideo._id));
+            await sendExpoPush([partner.notificationToken], `Video: ${title.trim()}`, `${owner?.name?.trim()} added a video!`, { type: NotificationData.Video, videoData: newVideo }, [partner.userId], String(newVideo._id));
         }
         res.status(201).json(newVideo);
     }
@@ -141,9 +124,8 @@ router.post("/", async (req, res) => {
 router.delete("/:id", async (req, res) => {
     try {
         const deletedVideo = await Video.findByIdAndDelete(req.params.id);
-        if (!deletedVideo) {
+        if (!deletedVideo)
             return res.status(404).json({ error: "Video not found" });
-        }
         const { owner } = await getOwnerAndPartner(deletedVideo.createdBy);
         if (owner?.notificationToken) {
             await sendExpoPush([owner.notificationToken], "Video deleted ❌", `${deletedVideo.title.trim()} has been deleted!`, { type: NotificationData.Video }, [owner.userId], String(deletedVideo._id));
@@ -157,7 +139,7 @@ router.delete("/:id", async (req, res) => {
 });
 /**
  * PATCH /videos/:id/viewed
- * Marks a video as viewed by the partner
+ * Marks a video as viewed by partner
  */
 router.patch("/:id/viewed", async (req, res) => {
     try {
@@ -165,7 +147,7 @@ router.patch("/:id/viewed", async (req, res) => {
         if (!video)
             return res.status(404).json({ error: "Video not found" });
         video.partnerWatched = true;
-        video.viewedAt = new Date(); // <-- mark viewed time
+        video.viewedAt = new Date();
         await video.save();
         const { owner } = await getOwnerAndPartner(video.createdBy);
         if (owner?.notificationToken) {
@@ -174,67 +156,58 @@ router.patch("/:id/viewed", async (req, res) => {
         res.json({ message: "Video marked as viewed", video });
     }
     catch (err) {
-        console.error("Error marking video as viewed:", err);
+        console.error("Error marking viewed:", err);
         res
             .status(500)
-            .json({ error: err.message || "Failed to mark video as viewed" });
+            .json({ error: err.message || "Failed to mark as viewed" });
     }
 });
 /**
  * POST /videos/:id/comment
- * Body: { createdBy: string, text: string }
+ * Body: { createdBy, text }
  */
 router.post("/:id/comment", async (req, res) => {
     try {
         const { createdBy, text } = req.body;
-        if (!createdBy || !text) {
+        if (!createdBy || !text)
             return res.status(400).json({ error: "createdBy and text are required" });
-        }
         const video = await Video.findById(req.params.id);
         if (!video)
             return res.status(404).json({ error: "Video not found" });
-        // Create new comment
         const newComment = {
             text,
             createdBy,
             createdAt: new Date(),
         };
-        // Add to video
         video.comments.push(newComment);
         await video.save();
-        // Enrich the last added comment with user details
-        const enrichedComment = await enrichComment(newComment);
-        video.comments[video.comments.length - 1] = enrichedComment;
-        // Save again if needed (optional, but ensures createdByDetails is stored)
+        const enriched = await enrichComment(newComment);
+        video.comments[video.comments.length - 1] = enriched;
         await video.save();
-        // Notify partner if exists
-        const { owner, partner } = await getOwnerAndPartner(createdBy);
+        const { partner } = await getOwnerAndPartner(createdBy);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Comment on video: ${video.title}`, `${enrichedComment.createdByDetails?.name || "Someone"} commented: "${text}"`, { type: NotificationData.Video, videoData: video }, [partner.userId], String(video._id));
+            await sendExpoPush([partner.notificationToken], `Comment on: ${video.title}`, `${enriched.createdByDetails?.name || "Someone"} commented: "${text}"`, { type: NotificationData.Video, videoData: video }, [partner.userId], String(video._id));
         }
-        // Send enriched comments back
         res.status(201).json({ comments: video.comments });
     }
     catch (err) {
-        console.error("Add video comment error:", err);
+        console.error("Add comment error:", err);
         res.status(500).json({ error: err.message || "Failed to add comment" });
     }
 });
 /**
  * GET /videos/:id/comments
- * Returns all comments for a video
  */
 router.get("/:id/comments", async (req, res) => {
     try {
         const video = await Video.findById(req.params.id).lean();
         if (!video)
             return res.status(404).json({ error: "Video not found" });
-        const commentsArray = video.comments || []; // <-- fix here
-        const comments = await Promise.all(commentsArray.map(enrichComment));
+        const comments = await Promise.all((video.comments || []).map(enrichComment));
         res.json({ comments });
     }
     catch (err) {
-        console.error("Get video comments error:", err);
+        console.error("Get comments error:", err);
         res.status(500).json({ error: err.message || "Failed to fetch comments" });
     }
 });

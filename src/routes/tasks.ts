@@ -8,141 +8,104 @@ import { NotificationData } from "../enum/notification.js";
 
 const router = Router();
 
-/**
- * Utility: resolve display name
- */
-async function getDisplayName(userId: string): Promise<string> {
-  if (!userId) return "Someone";
-  const u = await User.findOne({ userId }).lean();
-  return u?.name?.trim() || userId;
-}
+/* ----------------------------- Helper Functions ---------------------------- */
 
-/**
- * Utility: refresh createdByDetails on comments/subtask comments
- */
-async function enrichCreatedByDetails(item: any) {
+const getDisplayName = async (userId: string): Promise<string> => {
+  if (!userId) return "Someone";
+  const user = await User.findOne({ userId }).lean();
+  return user?.name?.trim() || userId;
+};
+
+const getUserDetails = async (userId: string) => {
+  const user = await User.findOne({ userId }).lean();
+  return user ? { name: user.name, image: user.image } : undefined;
+};
+
+const enrichCreatedByDetails = async (item: any) => {
   if (!item) return item;
   const userId = item.by || item.createdBy;
-  if (!userId) return item;
-
-  const user = await User.findOne({ userId }).lean();
-  if (!user) return item;
-
-  item.createdByDetails = {
-    name: user.name,
-    image: user?.image,
-  };
-
+  const userDetails = userId ? await getUserDetails(userId) : null;
+  if (userDetails) item.createdByDetails = userDetails;
   return item;
-}
+};
 
-/**
- * Utility: refresh all comments of a task
- */
-/**
- * Utility: refresh task + comments/subtask comments
- */
-async function enrichTask(task: any) {
+const enrichTask = async (task: any) => {
   if (!task) return task;
 
-  // Refresh task.createdByDetails
   if (task.createdBy) {
-    const user = await User.findOne({ userId: task.createdBy }).lean();
-    if (user) {
-      task.createdByDetails = {
-        name: user.name,
-        image: user.image,
-      };
-    }
+    const userDetails = await getUserDetails(task.createdBy);
+    if (userDetails) task.createdByDetails = userDetails;
   }
 
-  // Refresh task.comments
-  if (Array.isArray(task.comments)) {
+  if (Array.isArray(task.comments))
     task.comments = await Promise.all(
       task.comments.map(enrichCreatedByDetails)
     );
-  }
 
-  // Refresh subtasks.comments
   if (Array.isArray(task.subtasks)) {
     for (const subtask of task.subtasks) {
-      if (Array.isArray(subtask.comments)) {
+      if (Array.isArray(subtask.comments))
         subtask.comments = await Promise.all(
           subtask.comments.map(enrichCreatedByDetails)
         );
-      }
     }
   }
 
   return task;
-}
+};
 
-/**
- * Get active tasks
- */
+/* ----------------------------- Route Handlers ----------------------------- */
+
+/** 🔹 Get active tasks */
 router.get("/:ownerUserId", async (req, res) => {
   try {
     const { ownerUserId } = req.params;
-    const filter: any = { status: "Active" };
+    const filter: any = { status: TaskStatus.Active };
 
     if (ownerUserId) {
       const owner = await User.findOne({ userId: ownerUserId }).lean();
-      const partnerUserId = owner?.partnerUserId;
-      filter.ownerUserId = {
-        $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
-      };
+      const ids = [ownerUserId, owner?.partnerUserId].filter(Boolean);
+      filter.ownerUserId = { $in: ids };
     }
 
-    let list = await Task.find(filter)
+    const tasks = await Task.find(filter)
       .sort({ nextDue: 1, updatedAt: -1 })
       .lean();
-
-    list = await Promise.all(list.map(enrichTask));
-
-    res.json(list);
+    res.json(await Promise.all(tasks.map(enrichTask)));
   } catch (err: any) {
     console.error("Error fetching active tasks:", err);
     res.status(500).json({ error: err.message || "Failed to fetch tasks" });
   }
 });
 
-/**
- * Get task history
- */
+/** 🔹 Get task history with pagination */
 router.get("/history/:ownerUserId", async (req, res) => {
   try {
     const { ownerUserId } = req.params;
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
 
-    // 🔹 Read & sanitize pagination query params
-    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
-    const pageSize = Math.max(parseInt(req.query.pageSize as string) || 10, 1);
-
-    const filter: any = { status: { $in: ["Completed", "Expired"] } };
+    const filter: any = {
+      status: { $in: [TaskStatus.Completed, TaskStatus.Expired] },
+    };
 
     if (ownerUserId) {
       const owner = await User.findOne({ userId: ownerUserId }).lean();
-      const partnerUserId = owner?.partnerUserId;
-      filter.ownerUserId = {
-        $in: partnerUserId ? [ownerUserId, partnerUserId] : [ownerUserId],
-      };
+      const ids = [ownerUserId, owner?.partnerUserId].filter(Boolean);
+      filter.ownerUserId = { $in: ids };
     }
 
-    // 🔹 Total count for pagination
     const totalCount = await Task.countDocuments(filter);
     const totalPages = Math.ceil(totalCount / pageSize);
 
-    // 🔹 Paginated query
-    let list = await Task.find(filter)
+    const tasks = await Task.find(filter)
       .sort({ updatedAt: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean();
 
-    // Enrich each task
-    list = await Promise.all(list.map(enrichTask));
-
     res.json({
-      tasks: list,
+      tasks: await Promise.all(tasks.map(enrichTask)),
       totalPages,
       currentPage: page,
     });
@@ -152,18 +115,27 @@ router.get("/history/:ownerUserId", async (req, res) => {
   }
 });
 
-/**
- * Create task
- */
+/** 🔹 Create task */
 router.post("/", async (req, res) => {
   try {
-    const payload = req.body || {};
-    if (!payload.ownerUserId)
-      return res.status(400).json({ error: "ownerUserId is required" });
-    if (!payload.title)
-      return res.status(400).json({ error: "title is required" });
+    const {
+      ownerUserId,
+      title,
+      createdBy,
+      assignedTo,
+      priority,
+      frequency,
+      image,
+      description,
+      subtasks = [],
+    } = req.body;
 
-    const subtasks = (payload.subtasks || []).map((s: any) => ({
+    if (!ownerUserId || !title)
+      return res
+        .status(400)
+        .json({ error: "ownerUserId and title are required" });
+
+    const formattedSubtasks = subtasks.map((s: any) => ({
       title: s.title || "Untitled",
       dueDateTime: s.dueDateTime ? new Date(s.dueDateTime) : null,
       status: "Pending",
@@ -172,69 +144,62 @@ router.post("/", async (req, res) => {
       comments: [],
     }));
 
-    const { owner, partner } = await getOwnerAndPartner(payload.createdBy);
-    const t = await Task.create({
-      title: payload.title,
-      image: payload.image || "",
-      description: payload.description || "",
-      ownerUserId: payload.ownerUserId,
-      createdBy: payload.createdBy || payload.ownerUserId,
-      assignedTo: payload.assignedTo || "Both",
-      priority: payload.priority || "Medium",
-      frequency: payload.frequency || "Once",
-      subtasks,
-      status: "Active",
+    const { owner, partner } = await getOwnerAndPartner(createdBy);
+    const task = await Task.create({
+      title,
+      image: image || "",
+      description: description || "",
+      ownerUserId,
+      createdBy: createdBy || ownerUserId,
+      assignedTo: assignedTo || "Both",
+      priority: priority || "Medium",
+      frequency: frequency || "Once",
+      subtasks: formattedSubtasks,
+      status: TaskStatus.Active,
     });
 
-    const creatorName = await getDisplayName(t.createdBy);
+    const creatorName = await getDisplayName(task.createdBy);
 
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `Task: ${t.title.trim()}`,
+        `Task: ${task.title.trim()}`,
         `${creatorName} created a new task ${
-          t.assignedTo !== "Me" ? "for you" : ""
+          task.assignedTo !== "Me" ? "for you" : ""
         }`,
         {
           type: NotificationData.Task,
-          taskId: t._id,
-          isActive: t.status === TaskStatus.Active,
+          taskId: task._id,
+          isActive: true,
         },
-        [partner?.userId],
-        String(t._id)
+        [partner.userId],
+        String(task._id)
       );
     }
 
-    res.status(201).json(t);
+    res.status(201).json(task);
   } catch (err: any) {
     console.error("Create task error:", err);
     res.status(500).json({ error: err.message || "Failed to create task" });
   }
 });
 
-/**
- * Get task by ID
- */
+/** 🔹 Get task by ID */
 router.get("/task/:id", async (req, res) => {
   try {
-    let t: any = await Task.findById(req.params.id).lean();
-    if (!t) return res.status(404).json({ error: "Task not found" });
-
-    t = await enrichTask(t);
-
-    res.json(t);
+    const task = await Task.findById(req.params.id).lean();
+    if (!task) return res.status(404).json({ error: "Task not found" });
+    res.json(await enrichTask(task));
   } catch (err: any) {
     console.error("Get task error:", err);
     res.status(500).json({ error: err.message || "Failed to fetch task" });
   }
 });
 
-/**
- * Update task
- */
+/** 🔹 Update task */
 router.put("/:id", async (req, res) => {
   try {
-    const updates = req.body || {};
+    const updates = req.body;
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ error: "Task not found" });
 
@@ -243,11 +208,13 @@ router.put("/:id", async (req, res) => {
 
     const { owner, partner } = await getOwnerAndPartner(task.createdBy);
     const updaterName = await getDisplayName(updates?.subtasks?.[0]?.updatedBy);
-    if (owner?.notificationToken || partner?.notificationToken) {
+
+    const token = partner?.notificationToken || owner?.notificationToken;
+    const targetId = partner?.userId ?? owner?.userId;
+
+    if (token) {
       await sendExpoPush(
-        partner?.notificationToken
-          ? [partner.notificationToken]
-          : [owner.notificationToken!],
+        [token],
         `Task: ${task.title.trim()}`,
         `${updaterName} updated this task`,
         {
@@ -255,7 +222,7 @@ router.put("/:id", async (req, res) => {
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
-        [partner?.userId ?? owner.userId],
+        [targetId ?? ""],
         String(task._id)
       );
     }
@@ -267,16 +234,17 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-/**
- * Delete task
- */
+/** 🔹 Delete task */
 router.delete("/:id", async (req, res) => {
   try {
-    const { userId } = req.body || {};
-    const task = await Task.findByIdAndDelete(req.params.id);
+    const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "userId is required" });
+
+    const task = await Task.findByIdAndDelete(req.params.id);
     if (!task) return res.status(404).json({ error: "Task not found" });
+
     const { owner, partner } = await getOwnerAndPartner(userId);
+
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
@@ -295,18 +263,12 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-/**
- * Update subtask status
- */
+/** 🔹 Update subtask status */
 router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
   try {
-    const { userId, status } = req.body || {};
-    if (!userId || !status)
-      return res.status(400).json({ error: "userId and status required" });
-    if (!["Pending", "Completed"].includes(status))
-      return res
-        .status(400)
-        .json({ error: "Status must be Pending or Completed" });
+    const { userId, status } = req.body;
+    if (!userId || !["Pending", "Completed"].includes(status))
+      return res.status(400).json({ error: "Invalid userId or status" });
 
     const task: any = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ error: "Task not found" });
@@ -326,7 +288,7 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
 
     if (partner?.notificationToken) {
       await sendExpoPush(
-        [partner?.notificationToken!],
+        [partner.notificationToken],
         `Task: ${task.title.trim()}`,
         `${actorName} ${status === "Completed" ? "completed" : "reopened"} "${
           subtask.title
@@ -336,7 +298,7 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
-        [partner?.userId],
+        [partner.userId],
         String(task._id)
       );
     }
@@ -348,27 +310,32 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
   }
 });
 
-/**
- * Add task-level comment
- */
+/** 🔹 Add task-level comment */
 router.post("/:id/comment", async (req, res) => {
   try {
-    const { by, text } = req.body || {};
+    const { by, text } = req.body;
     if (!by || !text)
       return res.status(400).json({ error: "by and text required" });
 
     const task: any = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ error: "Task not found" });
 
-    const { owner, partner } = await getOwnerAndPartner(by);
-    task.comments = task.comments || [];
-    task.comments.push({
-      by,
-      text,
-    });
+    const now = Date.now();
+    const lastComment = [...(task.comments || [])]
+      .reverse()
+      .find((c) => c.by?.toString() === by);
 
+    const recent = lastComment?.createdAt
+      ? now - new Date(lastComment.createdAt).getTime() < 20000
+      : false;
+
+    task.comments.push({ by, text, createdAt: new Date() });
     await task.save();
 
+    if (recent)
+      return res.json({ task, message: "Comment added (no notification)" });
+
+    const { owner, partner } = await getOwnerAndPartner(by);
     const commenterName = await getDisplayName(by);
 
     if (partner?.notificationToken) {
@@ -381,7 +348,7 @@ router.post("/:id/comment", async (req, res) => {
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
-        [partner?.userId],
+        [partner.userId],
         String(task._id)
       );
     }
@@ -393,12 +360,10 @@ router.post("/:id/comment", async (req, res) => {
   }
 });
 
-/**
- * Add subtask comment
- */
+/** 🔹 Add subtask comment */
 router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
   try {
-    const { userId, text } = req.body || {};
+    const { userId, text } = req.body;
     if (!userId || !text)
       return res.status(400).json({ error: "userId and text required" });
 
@@ -407,16 +372,26 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
 
     const subtask = task.subtasks?.id(req.params.subtaskId);
     if (!subtask) return res.status(404).json({ error: "Subtask not found" });
-    const { owner, partner } = await getOwnerAndPartner(userId);
-    subtask.comments = subtask.comments || [];
-    subtask.comments.push({
-      text,
-      createdBy: userId,
-      createdAt: new Date(),
-    });
 
+    const now = Date.now();
+    const lastComment = [...(subtask.comments || [])]
+      .reverse()
+      .find((c) => c.createdBy?.toString() === userId);
+
+    const recent = lastComment?.createdAt
+      ? now - new Date(lastComment.createdAt).getTime() < 20000
+      : false;
+
+    subtask.comments.push({ text, createdBy: userId, createdAt: new Date() });
     await task.save();
 
+    if (recent)
+      return res.json({
+        task,
+        message: "Subtask comment added (no notification)",
+      });
+
+    const { owner, partner } = await getOwnerAndPartner(userId);
     const commenterName = await getDisplayName(userId);
 
     if (partner?.notificationToken) {
@@ -429,7 +404,7 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
         },
-        [partner?.userId],
+        [partner.userId],
         String(task._id)
       );
     }

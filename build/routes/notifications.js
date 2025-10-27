@@ -1,8 +1,10 @@
 import { Router } from "express";
 import fetch from "node-fetch";
 import Notification from "../models/Notification.js";
-export async function sendExpoPush(expoTokens = [], title, body, data = {}, toUserIds = [], groupId // 🔥 new param: group notifications by this ID (e.g. taskId)
-) {
+/**
+ * Send Expo push notification and store it in DB
+ */
+export async function sendExpoPush(expoTokens = [], title, body, data = {}, toUserIds = [], groupId) {
     if (!expoTokens.length)
         return;
     const messages = expoTokens.map((token) => ({
@@ -11,32 +13,32 @@ export async function sendExpoPush(expoTokens = [], title, body, data = {}, toUs
         title,
         body,
         data,
-        // Grouping info
-        ios: groupId
-            ? {
-                threadId: groupId, // iOS grouping
-            }
-            : undefined,
+        ios: groupId ? { threadId: groupId } : undefined,
         android: {
             channelId: data.type,
             ...(groupId ? { group: groupId } : {}),
         },
     }));
-    // Send notifications to Expo
-    await fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(messages),
-    });
-    // Save to DB (so you can fetch later)
-    if (title && body && toUserIds.length) {
-        await Notification.create({
-            title,
-            body,
-            data,
-            toUserIds,
-            ...(groupId ? { groupId } : {}), // store groupId for future use
+    try {
+        // Send push notifications
+        await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(messages),
         });
+        // Store in DB
+        if (title && body && toUserIds.length) {
+            await Notification.create({
+                title,
+                body,
+                data,
+                toUserIds,
+                ...(groupId ? { groupId } : {}),
+            });
+        }
+    }
+    catch (err) {
+        console.error("Error sending Expo push:", err);
     }
 }
 const router = Router();
@@ -46,12 +48,12 @@ const router = Router();
 router.get("/:userId", async (req, res) => {
     try {
         const { userId } = req.params;
-        const page = Math.max(parseInt(req.query.page) || 1, 1);
-        const pageSize = Math.max(parseInt(req.query.pageSize) || 10, 1);
-        const fourteenDaysAgo = new Date();
-        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-        // Delete notifications older than 14 days
-        await Notification.deleteMany({ createdAt: { $lt: fourteenDaysAgo } });
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
+        // Clean up old notifications (older than 14 days)
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - 14);
+        await Notification.deleteMany({ createdAt: { $lt: cutoffDate } });
         const filter = { toUserIds: userId };
         const totalCount = await Notification.countDocuments(filter);
         const totalPages = Math.ceil(totalCount / pageSize);
@@ -72,9 +74,9 @@ router.get("/:userId", async (req, res) => {
     }
     catch (err) {
         console.error("Error fetching notifications:", err);
-        res
-            .status(500)
-            .json({ error: err.message || "Failed to fetch notifications" });
+        res.status(500).json({
+            error: err.message || "Failed to fetch notifications",
+        });
     }
 });
 /**
@@ -83,17 +85,20 @@ router.get("/:userId", async (req, res) => {
  */
 router.patch("/mark-read", async (req, res) => {
     try {
-        const { userId, notificationIds } = req.body;
-        if (!userId || !Array.isArray(notificationIds))
+        const { userId, notificationIds } = req.body || {};
+        if (!userId || !Array.isArray(notificationIds)) {
             return res
                 .status(400)
                 .json({ error: "userId and notificationIds array required" });
+        }
         await Notification.updateMany({ _id: { $in: notificationIds } }, { $addToSet: { readBy: userId } });
         res.json({ message: "Notifications marked as read" });
     }
     catch (err) {
         console.error("Error marking notifications as read:", err);
-        res.status(500).json({ error: err.message || "Failed to mark as read" });
+        res.status(500).json({
+            error: err.message || "Failed to mark notifications as read",
+        });
     }
 });
 export default router;
