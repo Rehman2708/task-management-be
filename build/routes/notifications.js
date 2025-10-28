@@ -3,6 +3,7 @@ import fetch from "node-fetch";
 import Notification from "../models/Notification.js";
 /**
  * Send Expo push notification and store it in DB
+ * Groups and accumulates recent comments (like WhatsApp)
  */
 export async function sendExpoPush(expoTokens = [], title, body, data = {}, toUserIds = [], groupId) {
     if (!expoTokens.length)
@@ -20,14 +21,34 @@ export async function sendExpoPush(expoTokens = [], title, body, data = {}, toUs
         },
     }));
     try {
-        // Send push notifications
+        // Send push
         await fetch("https://exp.host/--/api/v2/push/send", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(messages),
         });
-        // Store in DB
+        // Store or merge in DB
         if (title && body && toUserIds.length) {
+            const now = new Date();
+            const recentTime = new Date(now.getTime() - 30000); // 30s window
+            if (groupId) {
+                const existing = await Notification.findOne({
+                    groupId,
+                    toUserIds: { $in: toUserIds },
+                    createdAt: { $gte: recentTime },
+                });
+                if (existing) {
+                    // 🔹 Append new comment to previous ones
+                    const parts = existing.body.split("\n").filter(Boolean);
+                    parts.push(body);
+                    const limited = parts.slice(-5); // keep last 5 messages max
+                    existing.body = limited.join("\n");
+                    existing.updatedAt = now;
+                    await existing.save();
+                    return;
+                }
+            }
+            // Otherwise create new notification
             await Notification.create({
                 title,
                 body,
@@ -50,27 +71,44 @@ router.get("/:userId", async (req, res) => {
         const { userId } = req.params;
         const page = Math.max(Number(req.query.page) || 1, 1);
         const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
-        // Clean up old notifications (older than 14 days)
+        // Delete notifications older than 7 days
         const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - 14);
-        await Notification.deleteMany({ createdAt: { $lt: cutoffDate } });
+        cutoffDate.setDate(cutoffDate.getDate() - 7);
+        const deleted = await Notification.deleteMany({
+            createdAt: { $lt: cutoffDate },
+        });
+        console.log(`Deleted ${deleted.deletedCount} old notifications`);
         const filter = { toUserIds: userId };
         const totalCount = await Notification.countDocuments(filter);
         const totalPages = Math.ceil(totalCount / pageSize);
-        const notifications = await Notification.find(filter)
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * pageSize)
-            .limit(pageSize)
-            .lean();
-        const formatted = notifications.map((n) => ({
-            ...n,
-            isRead: n.readBy?.includes(userId),
-        }));
+        // Fetch notifications (unread first, then newest first)
+        const notifications = await Notification.aggregate([
+            { $match: filter },
+            {
+                $addFields: {
+                    isRead: { $in: [userId, "$readBy"] },
+                },
+            },
+            {
+                $sort: {
+                    isRead: 1, // unread first
+                    createdAt: -1,
+                },
+            },
+            { $skip: (page - 1) * pageSize },
+            { $limit: pageSize },
+        ]);
+        // Send response first
         res.json({
-            notifications: formatted,
+            notifications,
             totalPages,
             currentPage: page,
         });
+        // Then, asynchronously mark fetched notifications as read
+        const notificationIds = notifications.map((n) => n._id);
+        if (notificationIds.length > 0) {
+            Notification.updateMany({ _id: { $in: notificationIds }, readBy: { $ne: userId } }, { $addToSet: { readBy: userId } }).catch((err) => console.error("Error marking notifications as read:", err));
+        }
     }
     catch (err) {
         console.error("Error fetching notifications:", err);

@@ -93,7 +93,11 @@ router.post("/", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(createdBy);
         const newNote = await Notes.create({ image, title, note, createdBy });
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`, { type: NotificationData.Note, noteId: newNote._id }, [partner.userId], String(newNote._id));
+            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`, {
+                type: NotificationData.Note,
+                noteId: newNote._id,
+                image: newNote.image ?? undefined,
+            }, [partner.userId], String(newNote._id));
         }
         res.status(201).json(newNote);
     }
@@ -118,7 +122,11 @@ router.put("/:id", async (req, res) => {
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} updated a note!`, { type: NotificationData.Note, noteId: updatedNote._id }, [partner.userId], String(updatedNote._id));
+            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} updated a note!`, {
+                type: NotificationData.Note,
+                noteId: updatedNote._id,
+                image: updatedNote.image ?? undefined,
+            }, [partner.userId], String(updatedNote._id));
         }
         res.json(updatedNote);
     }
@@ -140,7 +148,7 @@ router.delete("/:id", async (req, res) => {
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note deleted ❌`, `${owner?.name?.trim()} deleted "${deletedNote.title.trim()}"!`, { type: NotificationData.Note }, [partner.userId], String(deletedNote._id));
+            await sendExpoPush([partner.notificationToken], `Note deleted ❌`, `${owner?.name?.trim()} deleted "${deletedNote.title.trim()}"!`, { type: NotificationData.Note, image: deletedNote.image ?? undefined }, [partner.userId], String(deletedNote._id));
         }
         res.json({ message: "Note deleted successfully" });
     }
@@ -165,7 +173,11 @@ router.patch("/pin/:id", async (req, res) => {
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${updatedNote.title.trim()}`, `${owner?.name?.trim()} ${pinned ? "pinned" : "unpinned"} a note!`, { type: NotificationData.Note, noteId: updatedNote._id }, [partner.userId], String(updatedNote._id));
+            await sendExpoPush([partner.notificationToken], `Note: ${updatedNote.title.trim()}`, `${owner?.name?.trim()} ${pinned ? "pinned" : "unpinned"} a note!`, {
+                type: NotificationData.Note,
+                noteId: updatedNote._id,
+                image: updatedNote.image ?? undefined,
+            }, [partner.userId], String(updatedNote._id));
         }
         res.json(updatedNote);
     }

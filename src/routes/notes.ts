@@ -112,7 +112,11 @@ router.post("/", async (req, res) => {
         [partner.notificationToken],
         `Note: ${title.trim()}`,
         `${owner?.name?.trim()} created a note!`,
-        { type: NotificationData.Note, noteId: newNote._id },
+        {
+          type: NotificationData.Note,
+          noteId: newNote._id,
+          image: newNote.image ?? undefined,
+        },
         [partner.userId],
         String(newNote._id)
       );
@@ -151,7 +155,11 @@ router.put("/:id", async (req, res) => {
         [partner.notificationToken],
         `Note: ${title.trim()}`,
         `${owner?.name?.trim()} updated a note!`,
-        { type: NotificationData.Note, noteId: updatedNote._id },
+        {
+          type: NotificationData.Note,
+          noteId: updatedNote._id,
+          image: updatedNote.image ?? undefined,
+        },
         [partner.userId],
         String(updatedNote._id)
       );
@@ -181,7 +189,7 @@ router.delete("/:id", async (req, res) => {
         [partner.notificationToken],
         `Note deleted ❌`,
         `${owner?.name?.trim()} deleted "${deletedNote.title.trim()}"!`,
-        { type: NotificationData.Note },
+        { type: NotificationData.Note, image: deletedNote.image ?? undefined },
         [partner.userId],
         String(deletedNote._id)
       );
@@ -219,7 +227,11 @@ router.patch("/pin/:id", async (req, res) => {
         [partner.notificationToken],
         `Note: ${updatedNote.title.trim()}`,
         `${owner?.name?.trim()} ${pinned ? "pinned" : "unpinned"} a note!`,
-        { type: NotificationData.Note, noteId: updatedNote._id },
+        {
+          type: NotificationData.Note,
+          noteId: updatedNote._id,
+          image: updatedNote.image ?? undefined,
+        },
         [partner.userId],
         String(updatedNote._id)
       );

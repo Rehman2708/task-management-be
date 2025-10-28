@@ -71,7 +71,19 @@ router.get("/:ownerUserId", async (req, res) => {
     const tasks = await Task.find(filter)
       .sort({ nextDue: 1, updatedAt: -1 })
       .lean();
-    res.json(await Promise.all(tasks.map(enrichTask)));
+
+    // Only enrich createdByDetails for task, no comments
+    const enrichedTasks = await Promise.all(
+      tasks.map(async (task) => {
+        if (task.createdBy) {
+          const userDetails = await getUserDetails(task.createdBy);
+          if (userDetails) task.createdByDetails = userDetails;
+        }
+        return task;
+      })
+    );
+
+    res.json(enrichedTasks);
   } catch (err: any) {
     console.error("Error fetching active tasks:", err);
     res.status(500).json({ error: err.message || "Failed to fetch tasks" });
@@ -104,8 +116,19 @@ router.get("/history/:ownerUserId", async (req, res) => {
       .limit(pageSize)
       .lean();
 
+    // Only enrich createdByDetails for task, no comments
+    const enrichedTasks = await Promise.all(
+      tasks.map(async (task) => {
+        if (task.createdBy) {
+          const userDetails = await getUserDetails(task.createdBy);
+          if (userDetails) task.createdByDetails = userDetails;
+        }
+        return task;
+      })
+    );
+
     res.json({
-      tasks: await Promise.all(tasks.map(enrichTask)),
+      tasks: enrichedTasks,
       totalPages,
       currentPage: page,
     });
@@ -171,6 +194,7 @@ router.post("/", async (req, res) => {
           type: NotificationData.Task,
           taskId: task._id,
           isActive: true,
+          image: task.image ?? undefined,
         },
         [partner.userId],
         String(task._id)
@@ -221,6 +245,7 @@ router.put("/:id", async (req, res) => {
           type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
+          image: task.image ?? undefined,
         },
         [targetId ?? ""],
         String(task._id)
@@ -250,7 +275,7 @@ router.delete("/:id", async (req, res) => {
         [partner.notificationToken],
         `Task: ${task.title.trim()}`,
         `${owner?.name?.trim()} deleted this task!`,
-        { type: NotificationData.Task },
+        { type: NotificationData.Task, image: task.image ?? undefined },
         [partner.userId],
         String(task._id)
       );
@@ -297,6 +322,7 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
           type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
+          image: task.image ?? undefined,
         },
         [partner.userId],
         String(task._id)
@@ -347,6 +373,7 @@ router.post("/:id/comment", async (req, res) => {
           type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
+          image: task.image ?? undefined,
         },
         [partner.userId],
         String(task._id)
@@ -403,6 +430,7 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
           type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
+          image: task.image ?? undefined,
         },
         [partner.userId],
         String(task._id)
@@ -415,6 +443,60 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
     res
       .status(500)
       .json({ error: err.message || "Failed to add subtask comment" });
+  }
+});
+
+/** 🔹 task comments */
+router.get("/:taskId/comments", async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const task = await Task.findById(taskId, "comments").lean();
+    if (!task) return res.status(404).json({ error: "Task not found" });
+
+    // Enrich with user details only for the comments
+    const enrichedComments = await Promise.all(
+      (task.comments || []).map(async (comment) => ({
+        ...comment,
+        createdByDetails: await getUserDetails(comment.by),
+      }))
+    );
+
+    res.json(enrichedComments);
+  } catch (err: any) {
+    console.error("Error fetching task comments:", err);
+    res.status(500).json({ error: err.message || "Failed to fetch comments" });
+  }
+});
+
+/** 🔹 subtask comments */
+router.get("/:taskId/subtask/:subtaskId/comments", async (req, res) => {
+  try {
+    const { taskId, subtaskId } = req.params;
+
+    // Fetch only subtasks to minimize payload
+    const task = await Task.findById(taskId, "subtasks").lean();
+    if (!task) return res.status(404).json({ error: "Task not found" });
+
+    // ❌ FIX: .id() doesn't work with .lean(), use .find() instead
+    const subtask = task.subtasks?.find(
+      (st) => st._id.toString() === subtaskId
+    );
+    if (!subtask) return res.status(404).json({ error: "Subtask not found" });
+
+    // Enrich subtask comments with user details
+    const enrichedComments = await Promise.all(
+      (subtask.comments || []).map(async (comment) => ({
+        ...comment,
+        createdByDetails: await getUserDetails(comment.createdBy),
+      }))
+    );
+
+    res.json(enrichedComments);
+  } catch (err: any) {
+    console.error("Error fetching subtask comments:", err);
+    res.status(500).json({
+      error: err.message || "Failed to fetch subtask comments",
+    });
   }
 });
 
