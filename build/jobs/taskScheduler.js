@@ -20,12 +20,20 @@ async function getTokens(user, assignedTo) {
 }
 // Convert minutes to a human-readable string
 function formatTime(minutes) {
-    if (minutes >= 60) {
-        const hr = Math.floor(minutes / 60);
-        const min = Math.round(minutes % 60);
-        return min > 0 ? `${hr} hr ${min} min` : `${hr} hr`;
+    const rounded = Math.round(minutes);
+    const hr = Math.floor(rounded / 60);
+    let min = rounded % 60;
+    if (min === 60) {
+        min = 0;
+        return `${hr + 1} hr${hr + 1 > 1 ? "s" : ""}`;
     }
-    return `${Math.round(minutes)} min`;
+    if (hr > 0) {
+        const hrLabel = `hr${hr > 1 ? "s" : ""}`;
+        const minLabel = `min${min > 1 ? "s" : ""}`;
+        return min > 0 ? `${hr} ${hrLabel} ${min} ${minLabel}` : `${hr} ${hrLabel}`;
+    }
+    const minLabel = `min${rounded > 1 ? "s" : ""}`;
+    return `${rounded} ${minLabel}`;
 }
 // Main cron job function
 export function initCron() {

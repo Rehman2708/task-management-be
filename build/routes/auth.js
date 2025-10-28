@@ -18,12 +18,16 @@ async function formatUserResponse(u) {
                 name: partner.name,
                 image: partner.image ?? null,
                 theme: partner.theme ?? null,
+                font: partner.font ?? null,
+                about: partner.about ?? null,
             }
             : null,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
         image: u.image ?? null,
         theme: u.theme ?? null,
+        font: u.font ?? null,
+        about: u.about ?? null,
     };
 }
 /**
@@ -115,9 +119,7 @@ router.post("/connect-partner", async (req, res) => {
                 .status(400)
                 .json({ message: "This user is already connected to someone else" });
         if (partner.partnerUserId)
-            return res
-                .status(400)
-                .json({
+            return res.status(400).json({
                 message: "The partner user is already connected to someone else",
             });
         user.partnerUserId = partner.userId;
@@ -185,7 +187,7 @@ router.post("/logout", async (req, res) => {
  */
 router.put("/update-profile", async (req, res) => {
     try {
-        const { userId, name, image } = req.body || {};
+        const { userId, name, image, about } = req.body || {};
         if (!userId)
             return res.status(400).json({ message: "userId is required" });
         const user = await User.findOne({ userId });
@@ -193,6 +195,8 @@ router.put("/update-profile", async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         if (name)
             user.name = name;
+        if (about)
+            user.about = about;
         if (image !== undefined)
             user.image = image;
         await user.save();
@@ -228,6 +232,31 @@ router.put("/update-theme", async (req, res) => {
         await user.save();
         res.json({
             message: "Theme updated successfully",
+            user: await formatUserResponse(user),
+        });
+    }
+    catch (err) {
+        console.error("Update theme error:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+/**
+ * 🟢 Update Font
+ */
+router.put("/update-font", async (req, res) => {
+    try {
+        const { userId, font } = req.body || {};
+        if (!userId)
+            return res.status(400).json({ message: "userId is required" });
+        if (!font)
+            return res.status(400).json({ message: "font is required" });
+        const user = await User.findOne({ userId });
+        if (!user)
+            return res.status(404).json({ message: "User not found" });
+        user.font = font;
+        await user.save();
+        res.json({
+            message: "Font updated successfully",
             user: await formatUserResponse(user),
         });
     }

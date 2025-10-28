@@ -9,6 +9,8 @@ export interface IUser {
   updatedAt: Date;
   notificationToken?: string | null;
   image?: string | null;
+  font?: string | null;
+  about?: string | null;
   theme: { light: string; dark: string };
 }
 
@@ -23,6 +25,8 @@ const UserSchema = new mongoose.Schema<IUserDocument>(
     password: { type: String, required: true },
     notificationToken: { type: String, required: false },
     image: { type: String, required: false },
+    font: { type: String, required: false, default: "Montserrat" },
+    about: { type: String, required: false },
     theme: {
       dark: { type: String, required: true, default: "#3F87E9" },
       light: { type: String, required: true, default: "#6697D9" },
