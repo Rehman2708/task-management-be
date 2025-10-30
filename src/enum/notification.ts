@@ -3,4 +3,5 @@ export enum NotificationData {
   Profile = "profile",
   Task = "task",
   Note = "note",
+  List = "list",
 }

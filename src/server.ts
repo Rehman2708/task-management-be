@@ -11,6 +11,7 @@ import notesRoutes from "./routes/notes.js";
 import videosRoutes from "./routes/videos.js";
 import notificationRoutes from "./routes/notifications.js";
 import serverRoutes from "./routes/server.js";
+import listsRoutes from "./routes/lists.js";
 
 // Cron job
 import { initCron } from "./jobs/taskScheduler.js";
@@ -35,6 +36,7 @@ app.use("/notes", notesRoutes);
 app.use("/videos", videosRoutes);
 app.use("/notifications", notificationRoutes);
 app.use("/server", serverRoutes);
+app.use("/lists", listsRoutes);
 
 // Health check
 app.get("/", (_req, res) => res.json({ ok: true }));

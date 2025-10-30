@@ -21,7 +21,9 @@ const enrichCreatedByDetails = async (item) => {
     if (!item)
         return item;
     const userId = item.by || item.createdBy;
-    const userDetails = userId ? await getUserDetails(userId) : null;
+    if (!userId)
+        return item;
+    const userDetails = await getUserDetails(userId);
     if (userDetails)
         item.createdByDetails = userDetails;
     return item;
@@ -29,18 +31,60 @@ const enrichCreatedByDetails = async (item) => {
 const enrichTask = async (task) => {
     if (!task)
         return task;
+    let modified = false;
+    const enrichComment = async (comment, key) => {
+        const userId = comment[key];
+        if (!userId)
+            return comment;
+        const userDetails = await getUserDetails(userId);
+        if (userDetails) {
+            if (!comment.createdByDetails ||
+                comment.createdByDetails.name !== userDetails.name ||
+                comment.createdByDetails.image !== userDetails.image) {
+                comment.createdByDetails = userDetails;
+                modified = true;
+            }
+        }
+        return comment;
+    };
+    // Enrich task creator
     if (task.createdBy) {
         const userDetails = await getUserDetails(task.createdBy);
-        if (userDetails)
+        if (userDetails) {
             task.createdByDetails = userDetails;
-    }
-    if (Array.isArray(task.comments))
-        task.comments = await Promise.all(task.comments.map(enrichCreatedByDetails));
-    if (Array.isArray(task.subtasks)) {
-        for (const subtask of task.subtasks) {
-            if (Array.isArray(subtask.comments))
-                subtask.comments = await Promise.all(subtask.comments.map(enrichCreatedByDetails));
+            modified = true;
         }
+    }
+    // Count task comments
+    if (Array.isArray(task.comments)) {
+        task.totalComments = task.comments.length;
+        modified = true;
+        // Enrich task comments
+        for (let i = 0; i < task.comments.length; i++) {
+            task.comments[i] = await enrichComment(task.comments[i], "by");
+        }
+    }
+    // Count subtask comments
+    if (Array.isArray(task.subtasks)) {
+        for (let i = 0; i < task.subtasks.length; i++) {
+            const subtask = task.subtasks[i];
+            if (Array.isArray(subtask.comments)) {
+                subtask.totalComments = subtask.comments.length;
+                modified = true;
+                for (let j = 0; j < subtask.comments.length; j++) {
+                    subtask.comments[j] = await enrichComment(subtask.comments[j], "createdBy");
+                }
+            }
+        }
+    }
+    // Only persist if something changed
+    if (modified) {
+        await Task.findByIdAndUpdate(task._id, {
+            $set: {
+                totalComments: task.totalComments,
+                subtasks: task.subtasks,
+            },
+        }, { new: true });
     }
     return task;
 };
@@ -58,15 +102,7 @@ router.get("/:ownerUserId", async (req, res) => {
         const tasks = await Task.find(filter)
             .sort({ nextDue: 1, updatedAt: -1 })
             .lean();
-        // Only enrich createdByDetails for task, no comments
-        const enrichedTasks = await Promise.all(tasks.map(async (task) => {
-            if (task.createdBy) {
-                const userDetails = await getUserDetails(task.createdBy);
-                if (userDetails)
-                    task.createdByDetails = userDetails;
-            }
-            return task;
-        }));
+        const enrichedTasks = await Promise.all(tasks.map((t) => enrichCreatedByDetails(t)));
         res.json(enrichedTasks);
     }
     catch (err) {
@@ -95,15 +131,7 @@ router.get("/history/:ownerUserId", async (req, res) => {
             .skip((page - 1) * pageSize)
             .limit(pageSize)
             .lean();
-        // Only enrich createdByDetails for task, no comments
-        const enrichedTasks = await Promise.all(tasks.map(async (task) => {
-            if (task.createdBy) {
-                const userDetails = await getUserDetails(task.createdBy);
-                if (userDetails)
-                    task.createdByDetails = userDetails;
-            }
-            return task;
-        }));
+        const enrichedTasks = await Promise.all(tasks.map((t) => enrichCreatedByDetails(t)));
         res.json({
             tasks: enrichedTasks,
             totalPages,
@@ -166,7 +194,8 @@ router.get("/task/:id", async (req, res) => {
         const task = await Task.findById(req.params.id).lean();
         if (!task)
             return res.status(404).json({ error: "Task not found" });
-        res.json(await enrichTask(task));
+        const enriched = await enrichTask(task);
+        res.json(enriched);
     }
     catch (err) {
         console.error("Get task error:", err);
@@ -284,6 +313,7 @@ router.post("/:id/comment", async (req, res) => {
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
                 image: task.image ?? undefined,
+                isComment: true,
             }, [partner.userId], String(task._id));
         }
         res.json(task);
@@ -327,6 +357,8 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
                 image: task.image ?? undefined,
+                isComment: true,
+                commentSubtaskId: subtask._id,
             }, [partner.userId], String(task._id));
         }
         res.json(task);
@@ -361,11 +393,9 @@ router.get("/:taskId/comments", async (req, res) => {
 router.get("/:taskId/subtask/:subtaskId/comments", async (req, res) => {
     try {
         const { taskId, subtaskId } = req.params;
-        // Fetch only subtasks to minimize payload
         const task = await Task.findById(taskId, "subtasks").lean();
         if (!task)
             return res.status(404).json({ error: "Task not found" });
-        // ❌ FIX: .id() doesn't work with .lean(), use .find() instead
         const subtask = task.subtasks?.find((st) => st._id.toString() === subtaskId);
         if (!subtask)
             return res.status(404).json({ error: "Subtask not found" });
@@ -378,9 +408,9 @@ router.get("/:taskId/subtask/:subtaskId/comments", async (req, res) => {
     }
     catch (err) {
         console.error("Error fetching subtask comments:", err);
-        res.status(500).json({
-            error: err.message || "Failed to fetch subtask comments",
-        });
+        res
+            .status(500)
+            .json({ error: err.message || "Failed to fetch subtask comments" });
     }
 });
 export default router;

@@ -9,6 +9,8 @@ import { IVideo, IVideoComment } from "../models/Video.js";
 
 const router = Router();
 
+/* ---------------------------- Helper Functions ---------------------------- */
+
 async function enrichComment(comment: IVideoComment) {
   if (!comment?.createdBy) return comment;
   const user = await User.findOne({ userId: comment.createdBy }).lean<IUser>();
@@ -21,9 +23,62 @@ async function enrichComment(comment: IVideoComment) {
   return comment;
 }
 
+async function enrichVideo(video: IVideo) {
+  if (!video) return video;
+
+  let modified = false;
+
+  // 🔹 Enrich video creator details
+  if (video.createdBy) {
+    const user = await User.findOne({ userId: video.createdBy }).lean<IUser>();
+    if (user) {
+      const newDetails = { name: user.name, image: user.image || "" };
+      if (
+        !video.createdByDetails ||
+        video.createdByDetails.name !== newDetails.name ||
+        video.createdByDetails.image !== newDetails.image
+      ) {
+        video.createdByDetails = newDetails;
+        modified = true;
+      }
+    }
+  }
+
+  // 🔹 Enrich and count comments
+  if (Array.isArray(video.comments) && video.comments.length > 0) {
+    const enrichedComments = await Promise.all(
+      video.comments.map(enrichComment)
+    );
+    video.comments = enrichedComments;
+    video.totalComments = enrichedComments.length;
+    modified = true;
+  } else {
+    video.totalComments = 0;
+    modified = true;
+  }
+
+  // 🔹 Persist only if needed
+  if (modified) {
+    await Video.findByIdAndUpdate(
+      video._id,
+      {
+        $set: {
+          createdByDetails: video.createdByDetails,
+          totalComments: video.totalComments,
+          comments: video.comments,
+        },
+      },
+      { new: true }
+    );
+  }
+
+  return video;
+}
+
+/* ------------------------------- APIs ------------------------------------ */
+
 /**
  * GET /videos/:ownerUserId?page=1&pageSize=10
- * Returns paginated partner + owner videos
  */
 router.get(
   "/:ownerUserId",
@@ -41,7 +96,6 @@ router.get(
       const page = Math.max(Number(req.query.page) || 1, 1);
       const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
 
-      // Cleanup old watched videos
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
       await Video.deleteMany({
         partnerWatched: true,
@@ -59,13 +113,9 @@ router.get(
       const totalCount = await Video.countDocuments(filter);
       const totalPages = Math.ceil(totalCount / pageSize);
 
-      // Sort: unwatched first (partnerWatched: false/null), then watched (partnerWatched: true)
       const videoIds = (
         await Video.find(filter)
-          .sort({
-            partnerWatched: 1, // false/null first, true later
-            createdAt: -1, // newest first within each group
-          })
+          .sort({ partnerWatched: 1, createdAt: -1 })
           .select("_id")
           .lean()
       ).map((v) => v._id);
@@ -75,35 +125,10 @@ router.get(
         IVideo[]
       >();
 
-      // Update missing or outdated user details in videos
-      const bulkOps = [];
-      for (const video of videos) {
-        const user = await User.findOne({
-          userId: video.createdBy,
-        }).lean<IUser>();
-        if (!user) continue;
+      const enrichedVideos = await Promise.all(videos.map(enrichVideo));
 
-        const newDetails = { name: user.name, image: user.image || "" };
-        if (
-          !video.createdByDetails ||
-          video.createdByDetails.name !== newDetails.name ||
-          video.createdByDetails.image !== newDetails.image
-        ) {
-          bulkOps.push({
-            updateOne: {
-              filter: { _id: video._id },
-              update: { createdByDetails: newDetails },
-            },
-          });
-          video.createdByDetails = newDetails;
-        }
-      }
-
-      if (bulkOps.length) await Video.bulkWrite(bulkOps);
-
-      // Preserve order of pagedIds
       const sortedVideos = pagedIds.map((id) =>
-        videos.find((v) => v._id.equals(id))
+        enrichedVideos.find((v) => v?._id?.equals(id))
       );
 
       res.json({ videos: sortedVideos, totalPages, currentPage: page });
@@ -116,7 +141,6 @@ router.get(
 
 /**
  * GET /videos/all/:ownerUserId
- * Returns all partner + owner videos (title, createdAt, createdByDetails)
  */
 router.get("/all/:ownerUserId", async (req: Request, res: Response) => {
   try {
@@ -132,9 +156,12 @@ router.get("/all/:ownerUserId", async (req: Request, res: Response) => {
 
     const videos = await Video.find(
       filter,
-      "title createdAt createdByDetails"
+      "title createdAt createdByDetails totalComments"
     ).lean();
-    res.json({ videos });
+
+    const enriched = await Promise.all(videos.map(enrichVideo));
+
+    res.json({ videos: enriched });
   } catch (err: any) {
     console.error("Error fetching all videos:", err);
     res.status(500).json({ error: err.message || "Failed to fetch videos" });
@@ -143,7 +170,6 @@ router.get("/all/:ownerUserId", async (req: Request, res: Response) => {
 
 /**
  * POST /videos
- * Body: { title, url, createdBy }
  */
 router.post("/", async (req: Request, res: Response) => {
   try {
@@ -154,7 +180,12 @@ router.post("/", async (req: Request, res: Response) => {
         .json({ error: "title, url and createdBy are required" });
 
     const { owner, partner } = await getOwnerAndPartner(createdBy);
-    const newVideo = await Video.create({ title, url, createdBy });
+    const newVideo = await Video.create({
+      title,
+      url,
+      createdBy,
+      totalComments: 0,
+    });
 
     if (partner?.notificationToken) {
       await sendExpoPush(
@@ -204,7 +235,6 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
 
 /**
  * PATCH /videos/:id/viewed
- * Marks a video as viewed by partner
  */
 router.patch(
   "/:id/viewed",
@@ -241,7 +271,6 @@ router.patch(
 
 /**
  * POST /videos/:id/comment
- * Body: { createdBy, text }
  */
 router.post("/:id/comment", async (req: Request, res: Response) => {
   try {
@@ -259,6 +288,7 @@ router.post("/:id/comment", async (req: Request, res: Response) => {
     };
 
     video.comments.push(newComment);
+    video.totalComments = video.comments.length;
     await video.save();
 
     const enriched = await enrichComment(newComment);
@@ -271,13 +301,15 @@ router.post("/:id/comment", async (req: Request, res: Response) => {
         [partner.notificationToken],
         `Comment on: ${video.title}`,
         `${enriched.createdByDetails?.name || "Someone"} commented: "${text}"`,
-        { type: NotificationData.Video, videoData: video },
+        { type: NotificationData.Video, videoData: video, isComment: true },
         [partner.userId],
         String(video._id)
       );
     }
 
-    res.status(201).json({ comments: video.comments });
+    res
+      .status(201)
+      .json({ comments: video.comments, totalComments: video.totalComments });
   } catch (err: any) {
     console.error("Add comment error:", err);
     res.status(500).json({ error: err.message || "Failed to add comment" });
@@ -295,7 +327,11 @@ router.get("/:id/comments", async (req: Request, res: Response) => {
     const comments = await Promise.all(
       (video.comments || []).map(enrichComment)
     );
-    res.json({ comments });
+    await Video.findByIdAndUpdate(video._id, {
+      $set: { totalComments: comments.length },
+    });
+
+    res.json({ comments, totalComments: comments.length });
   } catch (err: any) {
     console.error("Get comments error:", err);
     res.status(500).json({ error: err.message || "Failed to fetch comments" });

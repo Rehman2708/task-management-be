@@ -24,6 +24,7 @@ export interface IVideo extends Document {
   comments: IVideoComment[];
   createdAt: Date;
   updatedAt: Date;
+  totalComments: number;
 }
 
 const VideoCommentSchema = new mongoose.Schema<IVideoComment>(
