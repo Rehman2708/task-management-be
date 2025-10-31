@@ -127,7 +127,7 @@ router.get("/history/:ownerUserId", async (req, res) => {
         const totalCount = await Task.countDocuments(filter);
         const totalPages = Math.ceil(totalCount / pageSize);
         const tasks = await Task.find(filter)
-            .sort({ updatedAt: -1 })
+            .sort({ createdAt: -1 })
             .skip((page - 1) * pageSize)
             .limit(pageSize)
             .lean();
@@ -294,17 +294,8 @@ router.post("/:id/comment", async (req, res) => {
         const task = await Task.findById(req.params.id);
         if (!task)
             return res.status(404).json({ error: "Task not found" });
-        const now = Date.now();
-        const lastComment = [...(task.comments || [])]
-            .reverse()
-            .find((c) => c.by?.toString() === by);
-        const recent = lastComment?.createdAt
-            ? now - new Date(lastComment.createdAt).getTime() < 20000
-            : false;
         task.comments.push({ by, text, createdAt: new Date() });
         await task.save();
-        if (recent)
-            return res.json({ task, message: "Comment added (no notification)" });
         const { owner, partner } = await getOwnerAndPartner(by);
         const commenterName = await getDisplayName(by);
         if (partner?.notificationToken) {
@@ -335,20 +326,8 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
         const subtask = task.subtasks?.id(req.params.subtaskId);
         if (!subtask)
             return res.status(404).json({ error: "Subtask not found" });
-        const now = Date.now();
-        const lastComment = [...(subtask.comments || [])]
-            .reverse()
-            .find((c) => c.createdBy?.toString() === userId);
-        const recent = lastComment?.createdAt
-            ? now - new Date(lastComment.createdAt).getTime() < 20000
-            : false;
         subtask.comments.push({ text, createdBy: userId, createdAt: new Date() });
         await task.save();
-        if (recent)
-            return res.json({
-                task,
-                message: "Subtask comment added (no notification)",
-            });
         const { owner, partner } = await getOwnerAndPartner(userId);
         const commenterName = await getDisplayName(userId);
         if (partner?.notificationToken) {

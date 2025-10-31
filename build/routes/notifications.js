@@ -27,28 +27,7 @@ export async function sendExpoPush(expoTokens = [], title, body, data = {}, toUs
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(messages),
         });
-        // Store or merge in DB
         if (title && body && toUserIds.length) {
-            const now = new Date();
-            const recentTime = new Date(now.getTime() - 30000); // 30s window
-            if (groupId) {
-                const existing = await Notification.findOne({
-                    groupId,
-                    toUserIds: { $in: toUserIds },
-                    createdAt: { $gte: recentTime },
-                });
-                if (existing) {
-                    // 🔹 Append new comment to previous ones
-                    const parts = existing.body.split("\n").filter(Boolean);
-                    parts.push(body);
-                    const limited = parts.slice(-5); // keep last 5 messages max
-                    existing.body = limited.join("\n");
-                    existing.updatedAt = now;
-                    await existing.save();
-                    return;
-                }
-            }
-            // Otherwise create new notification
             await Notification.create({
                 title,
                 body,
