@@ -9,6 +9,7 @@ import {
 import { sendExpoPush } from "../routes/notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { NotificationData } from "../enum/notification.js";
+import { NotificationMessages } from "../utils/notificationMessages.js";
 
 // Helper to get tokens for assignment
 async function getTokens(user: string, assignedTo: AssignedTo) {
@@ -88,8 +89,12 @@ export function initCron() {
 
                 await sendExpoPush(
                   tokens,
-                  `Reminder: ${task.title}`,
-                  `Subtask "${subtask.title}" is due in approximately ${timeString}.`,
+                  NotificationMessages.Task.Reminder,
+                  {
+                    taskTitle: task.title,
+                    subtaskTitle: subtask.title,
+                    timeString: timeString,
+                  },
                   {
                     type: NotificationData.Task,
                     taskId: task._id,

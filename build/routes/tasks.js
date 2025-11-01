@@ -5,6 +5,7 @@ import { getOwnerAndPartner } from "../helper.js";
 import { sendExpoPush } from "./notifications.js";
 import { TaskStatus } from "../enum/task.js";
 import { NotificationData } from "../enum/notification.js";
+import { NotificationMessages } from "../utils/notificationMessages.js";
 const router = Router();
 /* ----------------------------- Helper Functions ---------------------------- */
 const getDisplayName = async (userId) => {
@@ -100,9 +101,12 @@ router.get("/:ownerUserId", async (req, res) => {
             filter.ownerUserId = { $in: ids };
         }
         const tasks = await Task.find(filter)
-            .sort({ nextDue: 1, updatedAt: -1 })
+            .sort({ nextDue: 1, createdAt: -1 })
             .lean();
-        const enrichedTasks = await Promise.all(tasks.map((t) => enrichCreatedByDetails(t)));
+        const enrichedTasks = await Promise.all(tasks.map((t) => {
+            t.totalComments = t.comments.length;
+            return enrichCreatedByDetails(t);
+        }));
         res.json(enrichedTasks);
     }
     catch (err) {
@@ -131,7 +135,10 @@ router.get("/history/:ownerUserId", async (req, res) => {
             .skip((page - 1) * pageSize)
             .limit(pageSize)
             .lean();
-        const enrichedTasks = await Promise.all(tasks.map((t) => enrichCreatedByDetails(t)));
+        const enrichedTasks = await Promise.all(tasks.map((t) => {
+            t.totalComments = t.comments.length;
+            return enrichCreatedByDetails(t);
+        }));
         res.json({
             tasks: enrichedTasks,
             totalPages,
@@ -174,7 +181,11 @@ router.post("/", async (req, res) => {
         });
         const creatorName = await getDisplayName(task.createdBy);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()}`, `${creatorName} created a new task ${task.assignedTo !== "Me" ? "for you" : ""}`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Task.Created, {
+                taskTitle: task.title.trim(),
+                creatorName,
+                forYou: task.assignedTo !== "Me" ? "for you" : "",
+            }, {
                 type: NotificationData.Task,
                 taskId: task._id,
                 isActive: true,
@@ -216,7 +227,7 @@ router.put("/:id", async (req, res) => {
         const token = partner?.notificationToken || owner?.notificationToken;
         const targetId = partner?.userId ?? owner?.userId;
         if (token) {
-            await sendExpoPush([token], `Task: ${task.title.trim()}`, `${updaterName} updated this task`, {
+            await sendExpoPush([token], NotificationMessages.Task.Updated, { taskTitle: task.title.trim(), updaterName }, {
                 type: NotificationData.Task,
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
@@ -241,7 +252,7 @@ router.delete("/:id", async (req, res) => {
             return res.status(404).json({ error: "Task not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()}`, `${owner?.name?.trim()} deleted this task!`, { type: NotificationData.Task, image: task.image ?? undefined }, [partner.userId], String(task._id));
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Task.Deleted, { taskTitle: task.title.trim(), ownerName: owner?.name?.trim() ?? "" }, { type: NotificationData.Task, image: task.image ?? undefined }, [partner.userId], String(task._id));
         }
         res.json({ message: "Task deleted successfully" });
     }
@@ -271,7 +282,12 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(userId);
         const actorName = await getDisplayName(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()}`, `${actorName} ${status === "Completed" ? "completed" : "reopened"} "${subtask.title}"`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Task.SubtaskStatusChanged, {
+                taskTitle: task.title.trim(),
+                actorName,
+                status: status === "Completed" ? "completed" : "reopened",
+                subtaskTitle: subtask.title,
+            }, {
                 type: NotificationData.Task,
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
@@ -299,7 +315,7 @@ router.post("/:id/comment", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(by);
         const commenterName = await getDisplayName(by);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented: "${text}"`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Task.Comment, { taskTitle: task.title.trim(), commenterName, text }, {
                 type: NotificationData.Task,
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,
@@ -331,7 +347,12 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(userId);
         const commenterName = await getDisplayName(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Task: ${task.title.trim()} 💬`, `${commenterName} commented on "${subtask.title}": "${text}"`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Task.SubtaskComment, {
+                taskTitle: task.title.trim(),
+                commenterName,
+                subtaskTitle: subtask.title,
+                text,
+            }, {
                 type: NotificationData.Task,
                 taskId: task._id,
                 isActive: task.status === TaskStatus.Active,

@@ -1,13 +1,21 @@
 import { Router } from "express";
 import fetch from "node-fetch";
 import Notification from "../models/Notification.js";
-/**
- * Send Expo push notification and store it in DB
- * Groups and accumulates recent comments (like WhatsApp)
- */
-export async function sendExpoPush(expoTokens = [], title, body, data = {}, toUserIds = [], groupId) {
+export async function sendExpoPush(expoTokens = [], message, messageProps, data = {}, toUserIds = [], groupId) {
     if (!expoTokens.length)
         return;
+    // Resolve title and body
+    let title;
+    let body;
+    if (typeof message === "function") {
+        const result = message(messageProps);
+        title = result.title;
+        body = result.body;
+    }
+    else {
+        title = message;
+        body = messageProps; // if passing string directly
+    }
     const messages = expoTokens.map((token) => ({
         to: token,
         sound: "default",

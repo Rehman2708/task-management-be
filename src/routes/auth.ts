@@ -2,6 +2,7 @@ import { Router } from "express";
 import User, { IUserDocument, IUser } from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { NotificationData } from "../enum/notification.js";
+import { NotificationMessages } from "../utils/notificationMessages.js";
 
 const router = Router();
 
@@ -176,10 +177,10 @@ router.post("/connect-partner", async (req, res) => {
     const notifications = [];
     if (user.notificationToken)
       notifications.push(
-        sendExpoPush(
+        await sendExpoPush(
           [user.notificationToken],
-          "Partner Connected ❤️",
-          `You are connected with ${partner.name} 🎉!`,
+          NotificationMessages.Profile.PartnerConnected,
+          { userName: user.name, partnerName: partner.name, isForUser: true },
           { type: NotificationData.Profile },
           [userId]
         )
@@ -187,10 +188,10 @@ router.post("/connect-partner", async (req, res) => {
 
     if (partner.notificationToken)
       notifications.push(
-        sendExpoPush(
+        await sendExpoPush(
           [partner.notificationToken],
-          "Partner Connected ❤️",
-          `${user.name} connected with you 🎉!`,
+          NotificationMessages.Profile.PartnerConnected,
+          { userName: user.name, partnerName: partner.name, isForUser: false },
           { type: NotificationData.Profile },
           [partnerUserId]
         )

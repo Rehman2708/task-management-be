@@ -4,6 +4,7 @@ import Video from "../models/Video.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { NotificationData } from "../enum/notification.js";
+import { NotificationMessages } from "../utils/notificationMessages.js";
 const router = Router();
 /* ---------------------------- Helper Functions ---------------------------- */
 async function enrichComment(comment) {
@@ -136,7 +137,7 @@ router.post("/", async (req, res) => {
             totalComments: 0,
         });
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Video: ${title.trim()}`, `${owner?.name?.trim()} added a video!`, { type: NotificationData.Video, videoData: newVideo }, [partner.userId], String(newVideo._id));
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Video.Added, { videoTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" }, { type: NotificationData.Video, videoData: newVideo }, [partner.userId], String(newVideo._id));
         }
         res.status(201).json(newVideo);
     }
@@ -155,7 +156,7 @@ router.delete("/:id", async (req, res) => {
             return res.status(404).json({ error: "Video not found" });
         const { owner } = await getOwnerAndPartner(deletedVideo.createdBy);
         if (owner?.notificationToken) {
-            await sendExpoPush([owner.notificationToken], "Video deleted ❌", `${deletedVideo.title.trim()} has been deleted!`, { type: NotificationData.Video }, [owner.userId], String(deletedVideo._id));
+            await sendExpoPush([owner.notificationToken], NotificationMessages.Video.Deleted, { videoTitle: deletedVideo.title.trim() }, { type: NotificationData.Video }, [owner.userId], String(deletedVideo._id));
         }
         res.json({ message: "Video deleted successfully" });
     }
@@ -177,7 +178,7 @@ router.patch("/:id/viewed", async (req, res) => {
         await video.save();
         const { owner } = await getOwnerAndPartner(video.createdBy);
         if (owner?.notificationToken) {
-            await sendExpoPush([owner.notificationToken], "Video Viewed ✅", `Your video "${video.title}" has been viewed!`, { type: NotificationData.Video, videoData: video }, [owner.userId], String(video._id));
+            await sendExpoPush([owner.notificationToken], NotificationMessages.Video.Viewed, { videoTitle: video.title }, { type: NotificationData.Video, videoData: video }, [owner.userId], String(video._id));
         }
         res.json({ message: "Video marked as viewed", video });
     }
@@ -212,7 +213,11 @@ router.post("/:id/comment", async (req, res) => {
         await video.save();
         const { partner } = await getOwnerAndPartner(createdBy);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Comment on: ${video.title}`, `${enriched.createdByDetails?.name || "Someone"} commented: "${text}"`, { type: NotificationData.Video, videoData: video, isComment: true }, [partner.userId], String(video._id));
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Video.Comment, {
+                videoTitle: video.title,
+                commenterName: enriched.createdByDetails?.name ?? "Someone",
+                text,
+            }, { type: NotificationData.Video, videoData: video, isComment: true }, [partner.userId], String(video._id));
         }
         res
             .status(201)

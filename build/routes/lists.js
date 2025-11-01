@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { NotificationData } from "../enum/notification.js";
+import { NotificationMessages } from "../utils/notificationMessages.js";
 const router = Router();
 /**
  * Get all lists (optionally by user) with pagination
@@ -99,7 +100,7 @@ router.post("/", async (req, res) => {
             description,
         });
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `List: ${title.trim()}`, `${owner?.name?.trim()} created a list!`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.List.Created, { listTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" }, {
                 type: NotificationData.List,
                 listId: newList._id,
                 image: newList.image ?? undefined,
@@ -126,7 +127,7 @@ router.put("/:id", async (req, res) => {
             return res.status(404).json({ error: "List not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `List: ${title.trim()}`, `${owner?.name?.trim()} updated a list!`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.List.Updated, { listTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" }, {
                 type: NotificationData.List,
                 listId: updatedList._id,
                 image: updatedList.image ?? undefined,
@@ -152,7 +153,10 @@ router.delete("/:id", async (req, res) => {
             return res.status(404).json({ error: "List not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `List deleted ❌`, `${owner?.name?.trim()} deleted "${deletedList.title.trim()}"!`, { type: NotificationData.List, image: deletedList.image ?? undefined }, [partner.userId], String(deletedList._id));
+            await sendExpoPush([partner.notificationToken], NotificationMessages.List.Deleted, {
+                listTitle: deletedList.title.trim(),
+                ownerName: owner?.name?.trim() ?? "",
+            }, { type: NotificationData.List, image: deletedList.image ?? undefined }, [partner.userId], String(deletedList._id));
         }
         res.json({ message: "List deleted successfully" });
     }
@@ -177,7 +181,11 @@ router.patch("/pin/:id", async (req, res) => {
             return res.status(404).json({ error: "List not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `List: ${updatedList.title.trim()}`, `${owner?.name?.trim()} ${pinned ? "pinned" : "unpinned"} a list!`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.List.Pinned, {
+                listTitle: updatedList.title.trim(),
+                ownerName: owner?.name?.trim() ?? "",
+                pinned,
+            }, {
                 type: NotificationData.List,
                 listId: updatedList._id,
                 image: updatedList.image ?? undefined,
@@ -213,9 +221,11 @@ router.patch("/toggle-item/:listId/:itemIndex", async (req, res) => {
         }
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `List: ${list.title.trim()}`, `${owner?.name?.trim()} marked an item as ${list.items[Number(itemIndex)].completed
-                ? "completed ✅"
-                : "incomplete ❌"}`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.List.ItemStatus, {
+                listTitle: list.title.trim(),
+                ownerName: owner?.name?.trim() ?? "",
+                completed: list.items[Number(itemIndex)].completed,
+            }, {
                 type: NotificationData.List,
                 listId: list._id,
                 image: list.image ?? undefined,

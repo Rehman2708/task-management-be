@@ -4,6 +4,7 @@ import { AssignedTo, Frequency, SubtaskStatus, TaskStatus, } from "../enum/task.
 import { sendExpoPush } from "../routes/notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { NotificationData } from "../enum/notification.js";
+import { NotificationMessages } from "../utils/notificationMessages.js";
 // Helper to get tokens for assignment
 async function getTokens(user, assignedTo) {
     const tokens = [];
@@ -64,7 +65,11 @@ export function initCron() {
                                 !subtask.remindersSent.get(key)) {
                                 const tokens = await getTokens(task.createdBy, task.assignedTo);
                                 const timeString = formatTime(diffMinutes);
-                                await sendExpoPush(tokens, `Reminder: ${task.title}`, `Subtask "${subtask.title}" is due in approximately ${timeString}.`, {
+                                await sendExpoPush(tokens, NotificationMessages.Task.Reminder, {
+                                    taskTitle: task.title,
+                                    subtaskTitle: subtask.title,
+                                    timeString: timeString,
+                                }, {
                                     type: NotificationData.Task,
                                     taskId: task._id,
                                     isActive: task.status === TaskStatus.Active,

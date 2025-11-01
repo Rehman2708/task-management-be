@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { NotificationData } from "../enum/notification.js";
+import { NotificationMessages } from "../utils/notificationMessages.js";
 const router = Router();
 /**
  * Get all notes (optionally by user) with pagination
@@ -93,7 +94,7 @@ router.post("/", async (req, res) => {
         const { owner, partner } = await getOwnerAndPartner(createdBy);
         const newNote = await Notes.create({ image, title, note, createdBy });
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} created a note!`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Note.Created, { noteTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" }, {
                 type: NotificationData.Note,
                 noteId: newNote._id,
                 image: newNote.image ?? undefined,
@@ -122,7 +123,7 @@ router.put("/:id", async (req, res) => {
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${title.trim()}`, `${owner?.name?.trim()} updated a note!`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Note.Updated, { noteTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" }, {
                 type: NotificationData.Note,
                 noteId: updatedNote._id,
                 image: updatedNote.image ?? undefined,
@@ -148,7 +149,10 @@ router.delete("/:id", async (req, res) => {
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note deleted ❌`, `${owner?.name?.trim()} deleted "${deletedNote.title.trim()}"!`, { type: NotificationData.Note, image: deletedNote.image ?? undefined }, [partner.userId], String(deletedNote._id));
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Note.Deleted, {
+                noteTitle: deletedNote.title.trim(),
+                ownerName: owner?.name?.trim() ?? "",
+            }, { type: NotificationData.Note, image: deletedNote.image ?? undefined }, [partner.userId], String(deletedNote._id));
         }
         res.json({ message: "Note deleted successfully" });
     }
@@ -173,7 +177,11 @@ router.patch("/pin/:id", async (req, res) => {
             return res.status(404).json({ error: "Note not found" });
         const { owner, partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], `Note: ${updatedNote.title.trim()}`, `${owner?.name?.trim()} ${pinned ? "pinned" : "unpinned"} a note!`, {
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Note.Pinned, {
+                noteTitle: updatedNote.title.trim(),
+                ownerName: owner?.name?.trim() ?? "",
+                pinned,
+            }, {
                 type: NotificationData.Note,
                 noteId: updatedNote._id,
                 image: updatedNote.image ?? undefined,

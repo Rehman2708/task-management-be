@@ -25,6 +25,7 @@ const SubtaskSchema = new mongoose.Schema(
     dueDateTime: { type: Date, required: true },
     completedAt: { type: Date, default: null },
     updatedBy: { type: String, default: null }, // userId who last updated this subtask
+    totalComments: { type: Number, default: 0 },
     comments: [
       {
         text: { type: String, required: true },
@@ -123,6 +124,7 @@ const TaskSchema = new mongoose.Schema(
 
     subtasks: { type: [SubtaskSchema], default: [] },
     comments: { type: [CommentSchema], default: [] },
+    totalComments: { type: Number, default: 0 },
 
     template: TemplateSchema,
     instances: { type: [InstanceSchema], default: [] },

@@ -5,6 +5,7 @@ import { getOwnerAndPartner } from "../helper.js";
 import { sendExpoPush } from "./notifications.js";
 import { TaskStatus } from "../enum/task.js";
 import { NotificationData } from "../enum/notification.js";
+import { NotificationMessages } from "../utils/notificationMessages.js";
 
 const router = Router();
 
@@ -125,11 +126,14 @@ router.get("/:ownerUserId", async (req, res) => {
     }
 
     const tasks = await Task.find(filter)
-      .sort({ nextDue: 1, updatedAt: -1 })
+      .sort({ nextDue: 1, createdAt: -1 })
       .lean();
 
     const enrichedTasks = await Promise.all(
-      tasks.map((t) => enrichCreatedByDetails(t))
+      tasks.map((t) => {
+        t.totalComments = t.comments.length;
+        return enrichCreatedByDetails(t);
+      })
     );
 
     res.json(enrichedTasks);
@@ -166,7 +170,10 @@ router.get("/history/:ownerUserId", async (req, res) => {
       .lean();
 
     const enrichedTasks = await Promise.all(
-      tasks.map((t) => enrichCreatedByDetails(t))
+      tasks.map((t) => {
+        t.totalComments = t.comments.length;
+        return enrichCreatedByDetails(t);
+      })
     );
 
     res.json({
@@ -228,10 +235,12 @@ router.post("/", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `Task: ${task.title.trim()}`,
-        `${creatorName} created a new task ${
-          task.assignedTo !== "Me" ? "for you" : ""
-        }`,
+        NotificationMessages.Task.Created,
+        {
+          taskTitle: task.title.trim(),
+          creatorName,
+          forYou: task.assignedTo !== "Me" ? "for you" : "",
+        },
         {
           type: NotificationData.Task,
           taskId: task._id,
@@ -283,8 +292,8 @@ router.put("/:id", async (req, res) => {
     if (token) {
       await sendExpoPush(
         [token],
-        `Task: ${task.title.trim()}`,
-        `${updaterName} updated this task`,
+        NotificationMessages.Task.Updated,
+        { taskTitle: task.title.trim(), updaterName },
         {
           type: NotificationData.Task,
           taskId: task._id,
@@ -317,8 +326,8 @@ router.delete("/:id", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `Task: ${task.title.trim()}`,
-        `${owner?.name?.trim()} deleted this task!`,
+        NotificationMessages.Task.Deleted,
+        { taskTitle: task.title.trim(), ownerName: owner?.name?.trim() ?? "" },
         { type: NotificationData.Task, image: task.image ?? undefined },
         [partner.userId],
         String(task._id)
@@ -358,10 +367,13 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `Task: ${task.title.trim()}`,
-        `${actorName} ${status === "Completed" ? "completed" : "reopened"} "${
-          subtask.title
-        }"`,
+        NotificationMessages.Task.SubtaskStatusChanged,
+        {
+          taskTitle: task.title.trim(),
+          actorName,
+          status: status === "Completed" ? "completed" : "reopened",
+          subtaskTitle: subtask.title,
+        },
         {
           type: NotificationData.Task,
           taskId: task._id,
@@ -399,8 +411,8 @@ router.post("/:id/comment", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `Task: ${task.title.trim()} 💬`,
-        `${commenterName} commented: "${text}"`,
+        NotificationMessages.Task.Comment,
+        { taskTitle: task.title.trim(), commenterName, text },
         {
           type: NotificationData.Task,
           taskId: task._id,
@@ -442,8 +454,13 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `Task: ${task.title.trim()} 💬`,
-        `${commenterName} commented on "${subtask.title}": "${text}"`,
+        NotificationMessages.Task.SubtaskComment,
+        {
+          taskTitle: task.title.trim(),
+          commenterName,
+          subtaskTitle: subtask.title,
+          text,
+        },
         {
           type: NotificationData.Task,
           taskId: task._id,

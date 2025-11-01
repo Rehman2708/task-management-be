@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { NotificationData } from "../enum/notification.js";
+import { NotificationMessages } from "../utils/notificationMessages.js";
 
 const router = Router();
 
@@ -116,8 +117,8 @@ router.post("/", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `List: ${title.trim()}`,
-        `${owner?.name?.trim()} created a list!`,
+        NotificationMessages.List.Created,
+        { listTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" },
         {
           type: NotificationData.List,
           listId: newList._id,
@@ -157,8 +158,8 @@ router.put("/:id", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `List: ${title.trim()}`,
-        `${owner?.name?.trim()} updated a list!`,
+        NotificationMessages.List.Updated,
+        { listTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" },
         {
           type: NotificationData.List,
           listId: updatedList._id,
@@ -191,8 +192,11 @@ router.delete("/:id", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `List deleted ❌`,
-        `${owner?.name?.trim()} deleted "${deletedList.title.trim()}"!`,
+        NotificationMessages.List.Deleted,
+        {
+          listTitle: deletedList.title.trim(),
+          ownerName: owner?.name?.trim() ?? "",
+        },
         { type: NotificationData.List, image: deletedList.image ?? undefined },
         [partner.userId],
         String(deletedList._id)
@@ -229,8 +233,12 @@ router.patch("/pin/:id", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `List: ${updatedList.title.trim()}`,
-        `${owner?.name?.trim()} ${pinned ? "pinned" : "unpinned"} a list!`,
+        NotificationMessages.List.Pinned,
+        {
+          listTitle: updatedList.title.trim(),
+          ownerName: owner?.name?.trim() ?? "",
+          pinned,
+        },
         {
           type: NotificationData.List,
           listId: updatedList._id,
@@ -274,12 +282,12 @@ router.patch("/toggle-item/:listId/:itemIndex", async (req, res) => {
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        `List: ${list.title.trim()}`,
-        `${owner?.name?.trim()} marked an item as ${
-          list.items[Number(itemIndex)].completed
-            ? "completed ✅"
-            : "incomplete ❌"
-        }`,
+        NotificationMessages.List.ItemStatus,
+        {
+          listTitle: list.title.trim(),
+          ownerName: owner?.name?.trim() ?? "",
+          completed: list.items[Number(itemIndex)].completed,
+        },
         {
           type: NotificationData.List,
           listId: list._id,

@@ -10,15 +10,30 @@ export interface ExpoPushData {
  * Send Expo push notification and store it in DB
  * Groups and accumulates recent comments (like WhatsApp)
  */
-export async function sendExpoPush(
+type NotificationFunc<T> = (props: T) => { title: string; body: string };
+
+export async function sendExpoPush<T = any>(
   expoTokens: string[] = [],
-  title: string,
-  body: string,
+  message: string | NotificationFunc<T>,
+  messageProps?: T,
   data: ExpoPushData = {},
   toUserIds: string[] = [],
   groupId?: string
 ): Promise<void> {
   if (!expoTokens.length) return;
+
+  // Resolve title and body
+  let title: string;
+  let body: string;
+
+  if (typeof message === "function") {
+    const result = message(messageProps as T);
+    title = result.title;
+    body = result.body;
+  } else {
+    title = message;
+    body = messageProps as unknown as string; // if passing string directly
+  }
 
   const messages = expoTokens.map((token) => ({
     to: token,
