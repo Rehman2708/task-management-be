@@ -120,15 +120,15 @@ router.get("/:userId", async (req: Request, res: Response) => {
     });
 
     // Then, asynchronously mark fetched notifications as read
-    const notificationIds = notifications.map((n) => n._id);
-    if (notificationIds.length > 0) {
-      Notification.updateMany(
-        { _id: { $in: notificationIds }, readBy: { $ne: userId } },
-        { $addToSet: { readBy: userId } }
-      ).catch((err) =>
-        console.error("Error marking notifications as read:", err)
-      );
-    }
+    // const notificationIds = notifications.map((n) => n._id);
+    // if (notificationIds.length > 0) {
+    //   Notification.updateMany(
+    //     { _id: { $in: notificationIds }, readBy: { $ne: userId } },
+    //     { $addToSet: { readBy: userId } }
+    //   ).catch((err) =>
+    //     console.error("Error marking notifications as read:", err)
+    //   );
+    // }
   } catch (err: any) {
     console.error("Error fetching notifications:", err);
     res.status(500).json({

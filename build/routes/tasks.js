@@ -34,19 +34,21 @@ const enrichTask = async (task) => {
         return task;
     let modified = false;
     const enrichComment = async (comment, key) => {
-        const userId = comment[key];
-        if (!userId)
-            return comment;
-        const userDetails = await getUserDetails(userId);
-        if (userDetails) {
-            if (!comment.createdByDetails ||
-                comment.createdByDetails.name !== userDetails.name ||
-                comment.createdByDetails.image !== userDetails.image) {
-                comment.createdByDetails = userDetails;
-                modified = true;
-            }
-        }
         return comment;
+        // const userId = comment[key];
+        // if (!userId) return comment;
+        // const userDetails = await getUserDetails(userId);
+        // if (userDetails) {
+        //   if (
+        //     !comment.createdByDetails ||
+        //     comment.createdByDetails.name !== userDetails.name ||
+        //     comment.createdByDetails.image !== userDetails.image
+        //   ) {
+        //     comment.createdByDetails = userDetails;
+        //     modified = true;
+        //   }
+        // }
+        // return comment;
     };
     // Enrich task creator
     if (task.createdBy) {

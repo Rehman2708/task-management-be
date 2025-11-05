@@ -40,20 +40,21 @@ const enrichTask = async (task: any) => {
   let modified = false;
 
   const enrichComment = async (comment: any, key: "by" | "createdBy") => {
-    const userId = comment[key];
-    if (!userId) return comment;
-    const userDetails = await getUserDetails(userId);
-    if (userDetails) {
-      if (
-        !comment.createdByDetails ||
-        comment.createdByDetails.name !== userDetails.name ||
-        comment.createdByDetails.image !== userDetails.image
-      ) {
-        comment.createdByDetails = userDetails;
-        modified = true;
-      }
-    }
     return comment;
+    // const userId = comment[key];
+    // if (!userId) return comment;
+    // const userDetails = await getUserDetails(userId);
+    // if (userDetails) {
+    //   if (
+    //     !comment.createdByDetails ||
+    //     comment.createdByDetails.name !== userDetails.name ||
+    //     comment.createdByDetails.image !== userDetails.image
+    //   ) {
+    //     comment.createdByDetails = userDetails;
+    //     modified = true;
+    //   }
+    // }
+    // return comment;
   };
 
   // Enrich task creator
