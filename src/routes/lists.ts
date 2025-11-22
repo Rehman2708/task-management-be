@@ -1,5 +1,5 @@
 import { Router } from "express";
-import Lists from "../models/List.js";
+import Lists, { IList, IListComment } from "../models/List.js";
 import User from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
@@ -8,9 +8,63 @@ import { NotificationMessages } from "../utils/notificationMessages.js";
 
 const router = Router();
 
-/**
- * Get all lists (optionally by user) with pagination
- */
+/* ------------------------ Helper: Enrich Comment ------------------------ */
+async function enrichListComment(comment: IListComment) {
+  if (!comment?.createdBy) return comment;
+
+  const user = await User.findOne({ userId: comment.createdBy }).lean();
+  if (user) {
+    comment.createdByDetails = {
+      name: user.name,
+      image: user.image || "",
+    };
+  }
+  return comment;
+}
+
+/* ------------------------ Helper: Enrich List --------------------------- */
+async function enrichList(list: IList) {
+  if (!list) return list;
+
+  let modified = false;
+
+  // createdByDetails
+  const user = await User.findOne({ userId: list.createdBy }).lean();
+  if (user) {
+    const newDetails = { name: user.name, image: user.image || "" };
+    list.createdByDetails = newDetails;
+    modified = true;
+  }
+
+  // comments
+  if (Array.isArray(list.comments) && list.comments.length > 0) {
+    const enriched = await Promise.all(list.comments.map(enrichListComment));
+    list.comments = enriched;
+    list.totalComments = enriched.length;
+    modified = true;
+  } else {
+    list.totalComments = 0;
+    modified = true;
+  }
+
+  if (modified) {
+    await Lists.findByIdAndUpdate(
+      list._id,
+      {
+        $set: {
+          createdByDetails: list.createdByDetails,
+          comments: list.comments,
+          totalComments: list.totalComments,
+        },
+      },
+      { new: true }
+    );
+  }
+
+  return list;
+}
+
+/* ------------------------ GET ALL LISTS ------------------------ */
 router.get("/:ownerUserId", async (req, res) => {
   try {
     const { ownerUserId } = req.params;
@@ -35,35 +89,10 @@ router.get("/:ownerUserId", async (req, res) => {
       .limit(pageSize)
       .lean();
 
-    const userCache: any = {};
-
-    await Promise.all(
-      lists.map(async (list: any) => {
-        const userId = list.createdBy;
-        if (!userCache[userId]) {
-          const user = await User.findOne({ userId }).lean();
-          if (user)
-            userCache[userId] = { name: user.name, image: user.image || "" };
-        }
-
-        const latestDetails = userCache[userId];
-        if (!latestDetails) return;
-
-        if (
-          !list.createdByDetails ||
-          list.createdByDetails.name !== latestDetails.name ||
-          list.createdByDetails.image !== latestDetails.image
-        ) {
-          await Lists.findByIdAndUpdate(list._id, {
-            createdByDetails: latestDetails,
-          });
-          list.createdByDetails = latestDetails;
-        }
-      })
-    );
+    const enrichedLists = await Promise.all(lists.map(enrichList));
 
     res.json({
-      lists,
+      lists: enrichedLists,
       totalPages: Math.ceil(totalCount / pageSize),
       currentPage: page,
     });
@@ -73,29 +102,21 @@ router.get("/:ownerUserId", async (req, res) => {
   }
 });
 
-/**
- * Get a single list by ID
- */
+/* ------------------------ GET SINGLE LIST ------------------------ */
 router.get("/list/:id", async (req, res) => {
   try {
     const list = await Lists.findById(req.params.id).lean();
     if (!list) return res.status(404).json({ error: "List not found" });
 
-    const user = await User.findOne({ userId: list.createdBy }).lean();
-    if (user) {
-      list.createdByDetails = { name: user.name, image: user.image || "" };
-    }
-
-    res.json(list);
+    const enriched = await enrichList(list);
+    res.json(enriched);
   } catch (err: any) {
     console.error("Error fetching list:", err);
     res.status(500).json({ error: err.message || "Failed to fetch list" });
   }
 });
 
-/**
- * Create a new list
- */
+/* ------------------------ CREATE LIST ------------------------ */
 router.post("/", async (req, res) => {
   try {
     const { image, title, items, createdBy, description } = req.body || {};
@@ -112,6 +133,8 @@ router.post("/", async (req, res) => {
       items,
       createdBy,
       description,
+      comments: [],
+      totalComments: 0,
     });
 
     if (partner?.notificationToken) {
@@ -136,9 +159,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-/**
- * Update a list
- */
+/* ------------------------ UPDATE LIST ------------------------ */
 router.put("/:id", async (req, res) => {
   try {
     const { image, title, items, userId, description } = req.body || {};
@@ -177,9 +198,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-/**
- * Delete a list
- */
+/* ------------------------ DELETE LIST ------------------------ */
 router.delete("/:id", async (req, res) => {
   try {
     const { userId } = req.body || {};
@@ -210,9 +229,7 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-/**
- * Pin or unpin a list
- */
+/* ------------------------ PIN / UNPIN LIST ------------------------ */
 router.patch("/pin/:id", async (req, res) => {
   try {
     const { pinned, userId } = req.body || {};
@@ -256,13 +273,10 @@ router.patch("/pin/:id", async (req, res) => {
   }
 });
 
-/**
- * Toggle a single list item’s completed status
- */
+/* ------------------------ TOGGLE LIST ITEM ------------------------ */
 router.patch("/toggle-item/:listId/:itemIndex", async (req, res) => {
   try {
-    const { listId, itemIndex }: { listId: string; itemIndex: string } =
-      req.params;
+    const { listId, itemIndex } = req.params;
     const { userId } = req.body || {};
     if (!userId) return res.status(400).json({ error: "userId is required" });
 
@@ -272,36 +286,101 @@ router.patch("/toggle-item/:listId/:itemIndex", async (req, res) => {
     if (list.items?.[Number(itemIndex)]) {
       list.items[Number(itemIndex)].completed =
         !list.items[Number(itemIndex)].completed;
+
       await list.save();
+
+      const { owner, partner } = await getOwnerAndPartner(userId);
+      if (partner?.notificationToken) {
+        await sendExpoPush(
+          [partner.notificationToken],
+          NotificationMessages.List.ItemStatus,
+          {
+            listTitle: list.title.trim(),
+            ownerName: owner?.name?.trim() ?? "",
+            completed: list.items[Number(itemIndex)].completed,
+          },
+          {
+            type: NotificationData.List,
+            listId: list._id,
+            image: list.image ?? undefined,
+          },
+          [partner.userId],
+          String(list._id)
+        );
+      }
+
       res.json(list);
     } else {
       return res.status(400).json({ error: "Invalid item index" });
     }
+  } catch (err: any) {
+    console.error("Error toggling item:", err);
+    res.status(500).json({ error: err.message || "Failed to toggle item" });
+  }
+});
 
-    const { owner, partner } = await getOwnerAndPartner(userId);
+/* ------------------------ ADD COMMENT ------------------------ */
+router.post("/:id/comment", async (req, res) => {
+  try {
+    const { createdBy, text } = req.body;
+
+    if (!createdBy || !text)
+      return res.status(400).json({ error: "createdBy and text are required" });
+
+    const list = await Lists.findById(req.params.id);
+    if (!list) return res.status(404).json({ error: "List not found" });
+
+    const newComment = { text, createdBy, createdAt: new Date() };
+    const enrichedComment = await enrichListComment(newComment);
+    list.comments = list.comments || [];
+    list.comments.push(newComment);
+    list.totalComments = list.comments.length;
+    await list.save();
+
+    const { partner } = await getOwnerAndPartner(createdBy);
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
-        NotificationMessages.List.ItemStatus,
+        NotificationMessages.List.Comment,
         {
-          listTitle: list.title.trim(),
-          ownerName: owner?.name?.trim() ?? "",
-          completed: list.items[Number(itemIndex)].completed,
+          listTitle: list.title,
+          commenterName: enrichedComment.createdByDetails?.name ?? "Someone",
+          text,
         },
-        {
-          type: NotificationData.List,
-          listId: list._id,
-          image: list.image ?? undefined,
-        },
+        { type: NotificationData.List, listId: list._id, isComment: true },
         [partner.userId],
         String(list._id)
       );
     }
 
-    res.json(list);
+    res.status(201).json({
+      comments: list.comments,
+      totalComments: list.totalComments,
+    });
   } catch (err: any) {
-    console.error("Error toggling item:", err);
-    res.status(500).json({ error: err.message || "Failed to toggle item" });
+    console.error("Add list comment error:", err);
+    res.status(500).json({ error: err.message || "Failed to add comment" });
+  }
+});
+
+/* ------------------------ GET COMMENTS ------------------------ */
+router.get("/:id/comments", async (req, res) => {
+  try {
+    const list = await Lists.findById(req.params.id).lean();
+    if (!list) return res.status(404).json({ error: "List not found" });
+
+    const comments = await Promise.all(
+      (list.comments || []).map(enrichListComment)
+    );
+
+    await Lists.findByIdAndUpdate(list._id, {
+      $set: { totalComments: comments.length },
+    });
+
+    res.json({ comments, totalComments: comments.length });
+  } catch (err: any) {
+    console.error("Get list comments error:", err);
+    res.status(500).json({ error: err.message || "Failed to fetch comments" });
   }
 });
 

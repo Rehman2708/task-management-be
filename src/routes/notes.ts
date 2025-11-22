@@ -1,5 +1,5 @@
 import { Router } from "express";
-import Notes from "../models/Notes.js";
+import Notes, { INote, INoteComment } from "../models/Notes.js";
 import User from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
@@ -8,9 +8,63 @@ import { NotificationMessages } from "../utils/notificationMessages.js";
 
 const router = Router();
 
-/**
- * Get all notes (optionally by user) with pagination
- */
+/* ------------------------ Helper: Enrich Comment ------------------------ */
+async function enrichNoteComment(comment: INoteComment) {
+  if (!comment?.createdBy) return comment;
+
+  const user = await User.findOne({ userId: comment.createdBy }).lean();
+  if (user) {
+    comment.createdByDetails = {
+      name: user.name,
+      image: user.image || "",
+    };
+  }
+  return comment;
+}
+
+/* ------------------------ Helper: Enrich Note --------------------------- */
+async function enrichNote(note: INote) {
+  if (!note) return note;
+
+  let modified = false;
+
+  // createdByDetails update
+  const user = await User.findOne({ userId: note.createdBy }).lean();
+  if (user) {
+    const newDetails = { name: user.name, image: user.image || "" };
+    note.createdByDetails = newDetails;
+    modified = true;
+  }
+
+  // comments
+  if (Array.isArray(note.comments) && note.comments.length > 0) {
+    const enriched = await Promise.all(note.comments.map(enrichNoteComment));
+    note.comments = enriched;
+    note.totalComments = enriched.length;
+    modified = true;
+  } else {
+    note.totalComments = 0;
+    modified = true;
+  }
+
+  if (modified) {
+    await Notes.findByIdAndUpdate(
+      note._id,
+      {
+        $set: {
+          createdByDetails: note.createdByDetails,
+          comments: note.comments,
+          totalComments: note.totalComments,
+        },
+      },
+      { new: true }
+    );
+  }
+
+  return note;
+}
+
+/* ------------------------ GET Notes with Pagination ------------------------ */
 router.get("/:ownerUserId", async (req, res) => {
   try {
     const { ownerUserId } = req.params;
@@ -18,13 +72,11 @@ router.get("/:ownerUserId", async (req, res) => {
     const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
 
     const owner = await User.findOne({ userId: ownerUserId }).lean();
-    const filter: any = owner
+    const filter = owner
       ? {
-          createdBy: {
-            $in: owner.partnerUserId
-              ? [ownerUserId, owner.partnerUserId]
-              : [ownerUserId],
-          },
+          createdBy: owner.partnerUserId
+            ? { $in: [ownerUserId, owner.partnerUserId] }
+            : ownerUserId,
         }
       : {};
 
@@ -35,35 +87,10 @@ router.get("/:ownerUserId", async (req, res) => {
       .limit(pageSize)
       .lean();
 
-    const userCache: Record<string, any> = {};
-
-    await Promise.all(
-      notes.map(async (note) => {
-        const userId = note.createdBy;
-        if (!userCache[userId]) {
-          const user = await User.findOne({ userId }).lean();
-          if (user)
-            userCache[userId] = { name: user.name, image: user.image || "" };
-        }
-
-        const latestDetails = userCache[userId];
-        if (!latestDetails) return;
-
-        if (
-          !note.createdByDetails ||
-          note.createdByDetails.name !== latestDetails.name ||
-          note.createdByDetails.image !== latestDetails.image
-        ) {
-          await Notes.findByIdAndUpdate(note._id, {
-            createdByDetails: latestDetails,
-          });
-          note.createdByDetails = latestDetails;
-        }
-      })
-    );
+    const enrichedNotes = await Promise.all(notes.map(enrichNote));
 
     res.json({
-      notes,
+      notes: enrichedNotes,
       totalPages: Math.ceil(totalCount / pageSize),
       currentPage: page,
     });
@@ -73,46 +100,50 @@ router.get("/:ownerUserId", async (req, res) => {
   }
 });
 
-/**
- * Get a single note by ID
- */
+/* ------------------------ GET Single Note ------------------------ */
 router.get("/note/:id", async (req, res) => {
   try {
     const note = await Notes.findById(req.params.id).lean();
     if (!note) return res.status(404).json({ error: "Note not found" });
 
-    const user = await User.findOne({ userId: note.createdBy }).lean();
-    if (user) {
-      note.createdByDetails = { name: user.name, image: user.image || "" };
-    }
+    const enriched = await enrichNote(note);
 
-    res.json(note);
+    res.json(enriched);
   } catch (err: any) {
-    console.error("Error fetching single note:", err);
+    console.error("Error fetching note:", err);
     res.status(500).json({ error: err.message || "Failed to fetch note" });
   }
 });
 
-/**
- * Create a new note
- */
+/* ------------------------ CREATE Note ------------------------ */
 router.post("/", async (req, res) => {
   try {
     const { image, title, note, createdBy } = req.body || {};
-    if (!title || !note || !createdBy) {
+
+    if (!title || !note || !createdBy)
       return res
         .status(400)
         .json({ error: "title, note and createdBy are required" });
-    }
 
     const { owner, partner } = await getOwnerAndPartner(createdBy);
-    const newNote = await Notes.create({ image, title, note, createdBy });
+
+    const newNote = await Notes.create({
+      image,
+      title,
+      note,
+      createdBy,
+      comments: [],
+      totalComments: 0,
+    });
 
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
         NotificationMessages.Note.Created,
-        { noteTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" },
+        {
+          noteTitle: title.trim(),
+          ownerName: owner?.name?.trim() ?? "",
+        },
         {
           type: NotificationData.Note,
           noteId: newNote._id,
@@ -130,17 +161,14 @@ router.post("/", async (req, res) => {
   }
 });
 
-/**
- * Update a note
- */
+/* ------------------------ UPDATE Note ------------------------ */
 router.put("/:id", async (req, res) => {
   try {
     const { image, title, note, userId } = req.body || {};
-    if (!title || !note || !userId) {
+    if (!title || !note || !userId)
       return res
         .status(400)
         .json({ error: "title, note, and userId are required" });
-    }
 
     const updatedNote = await Notes.findByIdAndUpdate(
       req.params.id,
@@ -155,7 +183,10 @@ router.put("/:id", async (req, res) => {
       await sendExpoPush(
         [partner.notificationToken],
         NotificationMessages.Note.Updated,
-        { noteTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" },
+        {
+          noteTitle: title.trim(),
+          ownerName: owner?.name?.trim() ?? "",
+        },
         {
           type: NotificationData.Note,
           noteId: updatedNote._id,
@@ -173,29 +204,31 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-/**
- * Delete a note
- */
+/* ------------------------ DELETE Note ------------------------ */
 router.delete("/:id", async (req, res) => {
   try {
     const { userId } = req.body || {};
     if (!userId) return res.status(400).json({ error: "userId is required" });
 
-    const deletedNote = await Notes.findByIdAndDelete(req.params.id);
-    if (!deletedNote) return res.status(404).json({ error: "Note not found" });
+    const deleted = await Notes.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Note not found" });
 
     const { owner, partner } = await getOwnerAndPartner(userId);
+
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
         NotificationMessages.Note.Deleted,
         {
-          noteTitle: deletedNote.title.trim(),
+          noteTitle: deleted.title.trim(),
           ownerName: owner?.name?.trim() ?? "",
         },
-        { type: NotificationData.Note, image: deletedNote.image ?? undefined },
+        {
+          type: NotificationData.Note,
+          image: deleted.image ?? undefined,
+        },
         [partner.userId],
-        String(deletedNote._id)
+        String(deleted._id)
       );
     }
 
@@ -206,49 +239,125 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-/**
- * Pin or unpin a note
- */
+/* ------------------------ PIN / UNPIN Note ------------------------ */
 router.patch("/pin/:id", async (req, res) => {
   try {
     const { pinned, userId } = req.body || {};
-    if (typeof pinned !== "boolean" || !userId) {
+    if (typeof pinned !== "boolean" || !userId)
       return res
         .status(400)
         .json({ error: "pinned (boolean) and userId are required" });
-    }
 
-    const updatedNote = await Notes.findByIdAndUpdate(
+    const updated = await Notes.findByIdAndUpdate(
       req.params.id,
       { pinned },
       { new: true }
     );
-    if (!updatedNote) return res.status(404).json({ error: "Note not found" });
+
+    if (!updated) return res.status(404).json({ error: "Note not found" });
 
     const { owner, partner } = await getOwnerAndPartner(userId);
+
     if (partner?.notificationToken) {
       await sendExpoPush(
         [partner.notificationToken],
         NotificationMessages.Note.Pinned,
         {
-          noteTitle: updatedNote.title.trim(),
+          noteTitle: updated.title.trim(),
           ownerName: owner?.name?.trim() ?? "",
           pinned,
         },
         {
           type: NotificationData.Note,
-          noteId: updatedNote._id,
-          image: updatedNote.image ?? undefined,
+          noteId: updated._id,
+          image: updated.image ?? undefined,
         },
         [partner.userId],
-        String(updatedNote._id)
+        String(updated._id)
       );
     }
 
-    res.json(updatedNote);
+    res.json(updated);
   } catch (err: any) {
-    console.error("Error pinning/unpinning note:", err);
-    res.status(500).json({ error: err.message || "Failed to pin/unpin note" });
+    console.error("Error pinning note:", err);
+    res.status(500).json({ error: err.message || "Failed to pin note" });
+  }
+});
+
+/* ------------------------ ADD COMMENT ------------------------ */
+router.post("/:id/comment", async (req, res) => {
+  try {
+    const { createdBy, text } = req.body;
+
+    if (!createdBy || !text)
+      return res.status(400).json({ error: "createdBy and text are required" });
+
+    const note = await Notes.findById(req.params.id);
+    if (!note) return res.status(404).json({ error: "Note not found" });
+
+    const newComment = {
+      text,
+      createdBy,
+      createdAt: new Date(),
+    };
+    console.log(newComment);
+    const enrichedComment = await enrichNoteComment(newComment);
+    note.comments.push(newComment);
+    note.totalComments = note.comments.length;
+    await note.save();
+
+    const { partner } = await getOwnerAndPartner(createdBy);
+
+    if (partner?.notificationToken) {
+      await sendExpoPush(
+        [partner.notificationToken],
+        NotificationMessages.Note.Comment,
+        {
+          noteTitle: note.title,
+          commenterName: enrichedComment.createdByDetails?.name ?? "Someone",
+          text,
+        },
+        {
+          type: NotificationData.Note,
+          noteId: note._id,
+          isComment: true,
+        },
+        [partner.userId],
+        String(note._id)
+      );
+    }
+
+    res.status(201).json({
+      comments: note.comments,
+      totalComments: note.totalComments,
+    });
+  } catch (err: any) {
+    console.error("Add note comment error:", err);
+    res.status(500).json({ error: err.message || "Failed to add comment" });
+  }
+});
+
+/* ------------------------ GET COMMENTS ------------------------ */
+router.get("/:id/comments", async (req, res) => {
+  try {
+    const note = await Notes.findById(req.params.id).lean();
+    if (!note) return res.status(404).json({ error: "Note not found" });
+
+    const comments = await Promise.all(
+      (note.comments || []).map(enrichNoteComment)
+    );
+
+    await Notes.findByIdAndUpdate(note._id, {
+      $set: { totalComments: comments.length },
+    });
+
+    res.json({
+      comments,
+      totalComments: comments.length,
+    });
+  } catch (err: any) {
+    console.error("Get note comments error:", err);
+    res.status(500).json({ error: err.message || "Failed to fetch comments" });
   }
 });
 

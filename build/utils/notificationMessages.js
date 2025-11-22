@@ -54,6 +54,10 @@ export const NotificationMessages = {
             title: `List ${props.pinned ? "Pinned 📌" : "Unpinned 📌"}`,
             body: `${props.ownerName} ${props.pinned ? "pinned" : "unpinned"} the list "${props.listTitle}".`,
         }),
+        Comment: (props) => ({
+            title: `New Comment on List 💬`,
+            body: `${props.commenterName} commented on "${props.listTitle}": "${props.text}"`,
+        }),
         ItemStatus: (props) => ({
             title: `List Item Status Updated ✅`,
             body: `${props.ownerName} marked an item in the list "${props.listTitle}" as ${props.completed ? "completed" : "incomplete"}.`,
@@ -71,6 +75,10 @@ export const NotificationMessages = {
         Deleted: (props) => ({
             title: `Note Deleted ❌`,
             body: `${props.ownerName} deleted the note "${props.noteTitle}".`,
+        }),
+        Comment: (props) => ({
+            title: `New Comment on Note 💬`,
+            body: `${props.commenterName} commented on "${props.noteTitle}": "${props.text}"`,
         }),
         Pinned: (props) => ({
             title: `Note ${props.pinned ? "Pinned 📌" : "Unpinned 📌"}`,

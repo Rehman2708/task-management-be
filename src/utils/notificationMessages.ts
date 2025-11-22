@@ -99,7 +99,14 @@ export const NotificationMessages = {
         props.pinned ? "pinned" : "unpinned"
       } the list "${props.listTitle}".`,
     }),
-
+    Comment: (props: {
+      listTitle: string;
+      commenterName: string;
+      text: string;
+    }) => ({
+      title: `New Comment on List 💬`,
+      body: `${props.commenterName} commented on "${props.listTitle}": "${props.text}"`,
+    }),
     ItemStatus: (props: {
       listTitle: string;
       ownerName: string;
@@ -127,7 +134,14 @@ export const NotificationMessages = {
       title: `Note Deleted ❌`,
       body: `${props.ownerName} deleted the note "${props.noteTitle}".`,
     }),
-
+    Comment: (props: {
+      noteTitle: string;
+      commenterName: string;
+      text: string;
+    }) => ({
+      title: `New Comment on Note 💬`,
+      body: `${props.commenterName} commented on "${props.noteTitle}": "${props.text}"`,
+    }),
     Pinned: (props: {
       noteTitle: string;
       ownerName: string;
