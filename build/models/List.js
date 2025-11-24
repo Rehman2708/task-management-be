@@ -1,13 +1,5 @@
 import mongoose from "mongoose";
-const ListCommentSchema = new mongoose.Schema({
-    text: { type: String, required: true },
-    createdBy: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now },
-    createdByDetails: {
-        name: { type: String, required: true },
-        image: { type: String, required: false },
-    },
-}, { _id: true });
+import { CommentSchema } from "./Task.js";
 const ListSchema = new mongoose.Schema({
     image: { type: String },
     title: { type: String, required: true },
@@ -20,7 +12,7 @@ const ListSchema = new mongoose.Schema({
     ],
     createdBy: { type: String, required: true },
     pinned: { type: Boolean, default: false },
-    comments: { type: [ListCommentSchema], default: [] },
+    comments: { type: [CommentSchema], default: [] },
     totalComments: { type: Number, default: 0 },
     createdByDetails: {
         name: { type: String, required: true },

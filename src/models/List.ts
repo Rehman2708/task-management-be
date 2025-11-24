@@ -1,4 +1,5 @@
 import mongoose, { Document, Types } from "mongoose";
+import { CommentSchema } from "./Task.js";
 
 export interface IListComment {
   text: string;
@@ -28,19 +29,6 @@ export interface IList extends Document {
   };
 }
 
-const ListCommentSchema = new mongoose.Schema<IListComment>(
-  {
-    text: { type: String, required: true },
-    createdBy: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now },
-    createdByDetails: {
-      name: { type: String, required: true },
-      image: { type: String, required: false },
-    },
-  },
-  { _id: true }
-);
-
 const ListSchema = new mongoose.Schema<IList>(
   {
     image: { type: String },
@@ -54,7 +42,7 @@ const ListSchema = new mongoose.Schema<IList>(
     ],
     createdBy: { type: String, required: true },
     pinned: { type: Boolean, default: false },
-    comments: { type: [ListCommentSchema], default: [] },
+    comments: { type: [CommentSchema], default: [] },
     totalComments: { type: Number, default: 0 },
     createdByDetails: {
       name: { type: String, required: true },

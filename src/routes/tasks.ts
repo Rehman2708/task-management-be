@@ -495,7 +495,7 @@ router.get("/:taskId/comments", async (req, res) => {
     const enrichedComments = await Promise.all(
       (task.comments || []).map(async (comment) => ({
         ...comment,
-        createdByDetails: await getUserDetails(comment.by),
+        createdByDetails: await getUserDetails(comment.by ?? ""),
       }))
     );
 
@@ -522,7 +522,7 @@ router.get("/:taskId/subtask/:subtaskId/comments", async (req, res) => {
     const enrichedComments = await Promise.all(
       (subtask.comments || []).map(async (comment) => ({
         ...comment,
-        createdByDetails: await getUserDetails(comment.createdBy),
+        createdByDetails: await getUserDetails(comment.createdBy ?? ""),
       }))
     );
 

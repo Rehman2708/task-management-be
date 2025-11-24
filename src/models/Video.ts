@@ -1,4 +1,5 @@
 import mongoose, { Document, Types } from "mongoose";
+import { CommentSchema } from "./Task.js";
 
 export interface IVideoComment {
   text: string;
@@ -27,19 +28,6 @@ export interface IVideo extends Document {
   totalComments: number;
 }
 
-const VideoCommentSchema = new mongoose.Schema<IVideoComment>(
-  {
-    text: { type: String, required: true },
-    createdBy: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now },
-    createdByDetails: {
-      name: { type: String, required: false },
-      image: { type: String, required: false },
-    },
-  },
-  { _id: true }
-);
-
 const VideoSchema = new mongoose.Schema<IVideo>(
   {
     title: { type: String, required: true },
@@ -51,7 +39,7 @@ const VideoSchema = new mongoose.Schema<IVideo>(
       name: { type: String, required: false },
       image: { type: String, required: false },
     },
-    comments: { type: [VideoCommentSchema], default: [] },
+    comments: { type: [CommentSchema], default: [] },
   },
   { timestamps: true }
 );

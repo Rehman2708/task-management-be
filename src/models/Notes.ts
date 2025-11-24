@@ -1,4 +1,5 @@
 import mongoose, { Document, Types } from "mongoose";
+import { CommentSchema } from "./Task.js";
 
 export interface INoteComment {
   text: string;
@@ -27,19 +28,6 @@ export interface INote extends Document {
   };
 }
 
-const NoteCommentSchema = new mongoose.Schema<INoteComment>(
-  {
-    text: { type: String, required: true },
-    createdBy: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now },
-    createdByDetails: {
-      name: { type: String, required: true },
-      image: { type: String, required: false },
-    },
-  },
-  { _id: true }
-);
-
 const NoteSchema = new mongoose.Schema<INote>(
   {
     image: { type: String },
@@ -47,7 +35,7 @@ const NoteSchema = new mongoose.Schema<INote>(
     note: { type: String, required: true },
     createdBy: { type: String, required: true },
     pinned: { type: Boolean, default: false },
-    comments: { type: [NoteCommentSchema], default: [] },
+    comments: { type: [CommentSchema], default: [] },
     totalComments: { type: Number, default: 0 },
     createdByDetails: {
       name: { type: String, required: true },

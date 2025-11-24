@@ -68,11 +68,12 @@ router.get("/:ownerUserId", async (req, res) => {
         const { ownerUserId } = req.params;
         const page = Math.max(Number(req.query.page) || 1, 1);
         const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
-        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        await Video.deleteMany({
-            partnerWatched: true,
-            viewedAt: { $lte: cutoff },
-        });
+        // remove video seen and older than 24 hrs
+        // const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        // await Video.deleteMany({
+        //   partnerWatched: true,
+        //   viewedAt: { $lte: cutoff },
+        // });
         const owner = await User.findOne({ userId: ownerUserId }).lean();
         const partnerUserId = owner?.partnerUserId;
         const filter = {

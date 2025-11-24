@@ -232,7 +232,6 @@ router.post("/:id/comment", async (req, res) => {
             createdBy,
             createdAt: new Date(),
         };
-        console.log(newComment);
         const enrichedComment = await enrichNoteComment(newComment);
         note.comments.push(newComment);
         note.totalComments = note.comments.length;

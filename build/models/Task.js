@@ -1,5 +1,17 @@
 import mongoose from "mongoose";
 import { AssignedTo, Frequency, Priority, Recurrence, SubtaskStatus, TaskStatus, } from "../enum/task.js";
+// Task-level Comment Schema
+export const CommentSchema = new mongoose.Schema({
+    by: { type: String, required: false }, // userId
+    createdBy: { type: String, required: false }, // userId
+    createdByDetails: {
+        name: { type: String, required: false },
+        image: { type: String, required: false },
+    },
+    image: { type: String, required: false },
+    text: { type: String, required: true },
+    date: { type: Date, default: Date.now },
+}, { _id: true });
 // Subtask Schema
 const SubtaskSchema = new mongoose.Schema({
     title: { type: String, required: true },
@@ -17,28 +29,8 @@ const SubtaskSchema = new mongoose.Schema({
     completedAt: { type: Date, default: null },
     updatedBy: { type: String, default: null }, // userId who last updated this subtask
     totalComments: { type: Number, default: 0 },
-    comments: [
-        {
-            text: { type: String, required: true },
-            createdBy: { type: String, required: true }, // userId
-            createdAt: { type: Date, default: Date.now },
-            createdByDetails: {
-                name: { type: String, required: false },
-                image: { type: String, required: false },
-            },
-        },
-    ],
+    comments: { type: [CommentSchema], default: [] },
 }, { _id: true });
-// Task-level Comment Schema
-const CommentSchema = new mongoose.Schema({
-    by: { type: String, required: true }, // userId
-    createdByDetails: {
-        name: { type: String, required: false },
-        image: { type: String, required: false },
-    },
-    text: { type: String, required: true },
-    date: { type: Date, default: Date.now },
-}, { _id: false });
 // Instance Schema (optional for cron/templates)
 const InstanceSchema = new mongoose.Schema({
     dueDateTime: Date,
