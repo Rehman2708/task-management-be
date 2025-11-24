@@ -247,6 +247,7 @@ router.post("/:id/comment", async (req, res) => {
                 type: NotificationData.Note,
                 noteId: note._id,
                 isComment: true,
+                image: note.image ?? undefined,
             }, [partner.userId], String(note._id));
         }
         res.status(201).json({

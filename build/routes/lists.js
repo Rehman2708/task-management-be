@@ -271,7 +271,12 @@ router.post("/:id/comment", async (req, res) => {
                 listTitle: list.title,
                 commenterName: enrichedComment.createdByDetails?.name ?? "Someone",
                 text,
-            }, { type: NotificationData.List, listId: list._id, isComment: true }, [partner.userId], String(list._id));
+            }, {
+                type: NotificationData.List,
+                listId: list._id,
+                isComment: true,
+                image: list.image ?? undefined,
+            }, [partner.userId], String(list._id));
         }
         res.status(201).json({
             comments: list.comments,
