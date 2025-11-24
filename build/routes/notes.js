@@ -221,9 +221,11 @@ router.patch("/pin/:id", async (req, res) => {
 /* ------------------------ ADD COMMENT ------------------------ */
 router.post("/:id/comment", async (req, res) => {
     try {
-        const { createdBy, text } = req.body;
-        if (!createdBy || !text)
-            return res.status(400).json({ error: "createdBy and text are required" });
+        const { createdBy, text, image } = req.body;
+        if (!createdBy && (!text || !image))
+            return res
+                .status(400)
+                .json({ error: "createdBy and text or image are required" });
         const note = await Notes.findById(req.params.id);
         if (!note)
             return res.status(404).json({ error: "Note not found" });
@@ -231,6 +233,7 @@ router.post("/:id/comment", async (req, res) => {
             text,
             createdBy,
             createdAt: new Date(),
+            image,
         };
         const enrichedComment = await enrichNoteComment(newComment);
         note.comments.push(newComment);

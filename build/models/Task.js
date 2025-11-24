@@ -9,7 +9,7 @@ export const CommentSchema = new mongoose.Schema({
         image: { type: String, required: false },
     },
     image: { type: String, required: false },
-    text: { type: String, required: true },
+    text: { type: String, required: false },
     date: { type: Date, default: Date.now },
 }, { _id: true });
 // Subtask Schema

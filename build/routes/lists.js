@@ -253,13 +253,16 @@ router.patch("/toggle-item/:listId/:itemIndex", async (req, res) => {
 /* ------------------------ ADD COMMENT ------------------------ */
 router.post("/:id/comment", async (req, res) => {
     try {
-        const { createdBy, text } = req.body;
-        if (!createdBy || !text)
-            return res.status(400).json({ error: "createdBy and text are required" });
+        const { createdBy, text, image } = req.body;
+        if (!createdBy && (!text || !image))
+            return res
+                .status(400)
+                .json({ error: "createdBy and text or image are required" });
+        console.log(req.body);
         const list = await Lists.findById(req.params.id);
         if (!list)
             return res.status(404).json({ error: "List not found" });
-        const newComment = { text, createdBy, createdAt: new Date() };
+        const newComment = { text, createdBy, createdAt: new Date(), image };
         const enrichedComment = await enrichListComment(newComment);
         list.comments = list.comments || [];
         list.comments.push(newComment);

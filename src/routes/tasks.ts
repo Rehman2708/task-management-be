@@ -396,14 +396,16 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
 /** 🔹 Add task-level comment */
 router.post("/:id/comment", async (req, res) => {
   try {
-    const { by, text } = req.body;
-    if (!by || !text)
-      return res.status(400).json({ error: "by and text required" });
+    const { by, text, image } = req.body;
+    if (!by && (!text || !image))
+      return res
+        .status(400)
+        .json({ error: "by and text or image are required" });
 
     const task: any = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ error: "Task not found" });
 
-    task.comments.push({ by, text, createdAt: new Date() });
+    task.comments.push({ by, text, createdAt: new Date(), image });
     await task.save();
 
     const { owner, partner } = await getOwnerAndPartner(by);
@@ -436,9 +438,11 @@ router.post("/:id/comment", async (req, res) => {
 /** 🔹 Add subtask comment */
 router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
   try {
-    const { userId, text } = req.body;
-    if (!userId || !text)
-      return res.status(400).json({ error: "userId and text required" });
+    const { userId, text, image } = req.body;
+    if (!userId && (!text || !image))
+      return res
+        .status(400)
+        .json({ error: "userId and text or image required" });
 
     const task: any = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ error: "Task not found" });
@@ -446,7 +450,12 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
     const subtask = task.subtasks?.id(req.params.subtaskId);
     if (!subtask) return res.status(404).json({ error: "Subtask not found" });
 
-    subtask.comments.push({ text, createdBy: userId, createdAt: new Date() });
+    subtask.comments.push({
+      text,
+      createdBy: userId,
+      createdAt: new Date(),
+      image,
+    });
     await task.save();
 
     const { owner, partner } = await getOwnerAndPartner(userId);

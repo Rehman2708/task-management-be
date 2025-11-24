@@ -14,6 +14,7 @@ import listsRoutes from "./routes/lists.js";
 import uploadRoutes from "./routes/uploads.js";
 // Cron job
 import { initCron } from "./jobs/taskScheduler.js";
+import { deleteVideos } from "./jobs/deleteOldVideos.js";
 const app = express();
 // Middlewares
 app.use(cors());
@@ -40,5 +41,6 @@ app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
     // Initialize cron job
     initCron();
+    deleteVideos();
     console.log("Task cron job initialized");
 });

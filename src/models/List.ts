@@ -2,7 +2,8 @@ import mongoose, { Document, Types } from "mongoose";
 import { CommentSchema } from "./Task.js";
 
 export interface IListComment {
-  text: string;
+  text?: string;
+  image?: string;
   createdBy: string; // userId
   createdAt: Date;
   createdByDetails?: {
