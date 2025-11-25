@@ -75,6 +75,21 @@ export const NotificationMessages = {
             const body = variants[Math.floor(Math.random() * variants.length)];
             return { title: `🤝 Connection Update`, body };
         },
+        PartnerProfileUpdated: (props) => {
+            const { changedFields, partnerName } = props;
+            // Convert fields array to human-readable string
+            const fieldsText = changedFields.length === 1
+                ? changedFields[0]
+                : changedFields.slice(0, -1).join(", ") +
+                    " and " +
+                    changedFields.slice(-1);
+            const variants = [
+                `${partnerName} updated their ${fieldsText}. Take a look!`,
+                `Your partner, ${partnerName}, has changed their ${fieldsText}.`,
+            ];
+            const body = variants[Math.floor(Math.random() * variants.length)];
+            return { title: `📝 Profile Update`, body };
+        },
     },
     List: {
         Created: (props) => {

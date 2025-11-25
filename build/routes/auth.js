@@ -194,6 +194,8 @@ router.put("/update-profile", async (req, res) => {
         const user = await User.findOne({ userId });
         if (!user)
             return res.status(404).json({ message: "User not found" });
+        const nameChanged = name && name !== user.name;
+        const imageChanged = image !== undefined && image !== user.image;
         if (name)
             user.name = name;
         if (about)
@@ -201,6 +203,20 @@ router.put("/update-profile", async (req, res) => {
         if (image !== undefined)
             user.image = image;
         await user.save();
+        // Notify partner if name or image changed and partner exists
+        if ((nameChanged || imageChanged) && user.partnerUserId) {
+            const partner = await User.findOne({ userId: user.partnerUserId });
+            if (partner?.notificationToken) {
+                await sendExpoPush([partner.notificationToken], NotificationMessages.Profile.PartnerProfileUpdated, {
+                    partnerName: user.name,
+                    isForUser: false,
+                    changedFields: [
+                        ...(nameChanged ? ["name"] : []),
+                        ...(imageChanged ? ["image"] : []),
+                    ],
+                }, { type: NotificationData.Profile }, [partner.userId]);
+            }
+        }
         res.json({
             message: "Profile updated successfully",
             user: await formatUserResponse(user),
