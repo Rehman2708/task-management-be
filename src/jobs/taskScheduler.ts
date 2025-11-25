@@ -66,10 +66,10 @@ export function initCron() {
               subtask.remindersSent = new Map<string, boolean>();
 
             const reminders = [
-              { time: 240, range: [238, 242] }, // 4 hr
-              { time: 120, range: [118, 122] }, // 2 hr
-              { time: 30, range: [28, 32] }, // 30 min
-              { time: 10, range: [8, 12] }, // 10 min
+              { time: 240, range: [239, 241] }, // 4 hr
+              { time: 120, range: [119, 121] }, // 2 hr
+              { time: 30, range: [29, 31] }, // 30 min
+              { time: 10, range: [9, 11] }, // 10 min
             ];
 
             for (const r of reminders) {
