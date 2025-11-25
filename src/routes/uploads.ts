@@ -12,8 +12,21 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 dotenv.config();
 const router = Router();
 
-// Multer storage (memory)
-const upload = multer({ storage: multer.memoryStorage() });
+// --------------------
+// Multer disk storage
+// --------------------
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, "/tmp"),
+    filename: (req, file, cb) => {
+      const safeName = file.originalname.replace(/\s/g, "");
+      cb(null, `${Date.now()}-${safeName}`);
+    },
+  }),
+  limits: {
+    fileSize: 200 * 1024 * 1024, // 200MB max, adjust as needed
+  },
+});
 
 router.post(
   "/upload",
@@ -22,23 +35,22 @@ router.post(
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-      const originalName = req.file.originalname.replace(/\s/g, "");
-      const filename = `${Date.now()}-${originalName}`;
+      const tempPath = req.file.path;
+      const filename = req.file.filename;
       const mimeType = req.file.mimetype.toLowerCase();
 
+      let finalPath = tempPath;
       const isVideo = mimeType.startsWith("video/");
       const isImage = mimeType.startsWith("image/");
 
-      // Save temporary file
-      const tempPath = path.join("/tmp", filename);
-      fs.writeFileSync(tempPath, req.file.buffer);
-      let finalPath = tempPath;
-
-      // ----- Video compression -----
-      if (isVideo) {
-        const compressedVideoPath = path.join("/tmp", `compressed-${filename}`);
+      // --------------------
+      // Video compression (streamed)
+      // --------------------
+      if (isVideo && req.file.size < 50 * 1024 * 1024) {
+        // compress only small-medium files
+        const compressedPath = path.join("/tmp", `compressed-${filename}`);
         await new Promise<void>((resolve) => {
-          ffmpeg(tempPath)
+          ffmpeg(fs.createReadStream(tempPath))
             .videoCodec("libx264")
             .outputOptions([
               "-preset",
@@ -55,34 +67,37 @@ router.post(
               "+faststart",
             ])
             .on("end", () => {
-              finalPath = compressedVideoPath;
+              finalPath = compressedPath;
               resolve();
             })
             .on("error", (err) => {
               console.log("❌ Video compression failed → using original", err);
-              finalPath = tempPath;
-              resolve();
+              resolve(); // fallback to original
             })
-            .save(compressedVideoPath);
+            .save(compressedPath);
         });
       }
 
-      // ----- Image compression -----
+      // --------------------
+      // Image compression (streamed)
+      // --------------------
       if (isImage) {
-        const compressedImagePath = path.join("/tmp", `compressed-${filename}`);
+        const compressedPath = path.join("/tmp", `compressed-${filename}`);
         try {
-          await sharp(tempPath)
+          await sharp(tempPath) // pass file path, NOT ReadStream
             .resize({ width: 1920, withoutEnlargement: true })
             .jpeg({ quality: 82 })
-            .toFile(compressedImagePath);
-          finalPath = compressedImagePath;
+            .toFile(compressedPath);
+          finalPath = compressedPath;
         } catch (err) {
           console.log("❌ Image compression failed → using original", err);
           finalPath = tempPath;
         }
       }
 
-      // ----- Upload to S3 using multipart -----
+      // --------------------
+      // Upload to S3 (streamed)
+      // --------------------
       const fileStream = fs.createReadStream(finalPath);
       const s3Upload = new Upload({
         client: s3,
@@ -94,7 +109,7 @@ router.post(
           ContentDisposition: "inline",
         },
         queueSize: 4,
-        partSize: 5 * 1024 * 1024, // 5MB chunks
+        partSize: 5 * 1024 * 1024, // 5MB
         leavePartsOnError: false,
       });
 
@@ -106,7 +121,9 @@ router.post(
 
       const url = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${filename}`;
 
+      // --------------------
       // Cleanup temp files
+      // --------------------
       [tempPath, `/tmp/compressed-${filename}`].forEach((f) => {
         if (fs.existsSync(f)) fs.unlinkSync(f);
       });
@@ -125,7 +142,9 @@ router.post(
   }
 );
 
-// DELETE route remains the same as your previous code
+// --------------------
+// Delete route
+// --------------------
 router.delete("/delete", async (req: Request, res: Response) => {
   try {
     const { uri } = req.query;
