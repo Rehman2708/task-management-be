@@ -134,6 +134,7 @@ router.post("/", async (req, res) => {
       createdBy,
       comments: [],
       totalComments: 0,
+      createdByDetails: { name: owner?.name, image: owner?.image },
     });
 
     if (partner?.notificationToken) {
