@@ -20,7 +20,7 @@ export interface IUserDocument extends IUser, Document {}
 const UserSchema = new mongoose.Schema<IUserDocument>(
   {
     name: { type: String, required: true },
-    userId: { type: String, required: true, unique: true },
+    userId: { type: String, required: true, unique: true, immutable: true },
     partnerUserId: { type: String, default: null },
     password: { type: String, required: true },
     notificationToken: { type: String, required: false },
