@@ -5,14 +5,13 @@ import fs from "fs";
 import path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import sharp from "sharp";
-import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { s3 } from "../utils/s3Clients.js";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 dotenv.config();
 const router = Router();
+// Multer storage (memory)
 const upload = multer({ storage: multer.memoryStorage() });
-router.get("/", (req, res) => {
-    res.status(200).json({ message: "Upload API working 🚀", time: new Date() });
-});
 router.post("/upload", upload.single("file"), async (req, res) => {
     try {
         if (!req.file)
@@ -22,23 +21,23 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         const mimeType = req.file.mimetype.toLowerCase();
         const isVideo = mimeType.startsWith("video/");
         const isImage = mimeType.startsWith("image/");
-        // Save file to /tmp
+        // Save temporary file
         const tempPath = path.join("/tmp", filename);
         fs.writeFileSync(tempPath, req.file.buffer);
-        let finalUploadPath = tempPath;
-        // -------- Video Compression --------
+        let finalPath = tempPath;
+        // ----- Video compression -----
         if (isVideo) {
-            const compressedPath = path.join("/tmp", `compressed-${filename}`);
+            const compressedVideoPath = path.join("/tmp", `compressed-${filename}`);
             await new Promise((resolve) => {
                 ffmpeg(tempPath)
                     .videoCodec("libx264")
                     .outputOptions([
                     "-preset",
-                    "fast", // Better quality than veryfast
+                    "fast",
                     "-crf",
-                    "23", // Balanced quality
+                    "23",
                     "-b:v",
-                    "1500k", // Maintain detail
+                    "1500k",
                     "-maxrate",
                     "2000k",
                     "-bufsize",
@@ -47,54 +46,61 @@ router.post("/upload", upload.single("file"), async (req, res) => {
                     "+faststart",
                 ])
                     .on("end", () => {
-                    finalUploadPath = compressedPath;
-                    resolve(true);
+                    finalPath = compressedVideoPath;
+                    resolve();
                 })
                     .on("error", (err) => {
                     console.log("❌ Video compression failed → using original", err);
-                    finalUploadPath = tempPath;
-                    resolve(true);
+                    finalPath = tempPath;
+                    resolve();
                 })
-                    .save(compressedPath);
+                    .save(compressedVideoPath);
             });
         }
-        // -------- Image Compression --------
+        // ----- Image compression -----
         if (isImage) {
-            const compressedPath = path.join("/tmp", `compressed-${filename}`);
-            await sharp(tempPath)
-                .resize({ width: 1920, withoutEnlargement: true }) // Only shrink if bigger
-                .jpeg({ quality: 82 }) // High quality
-                .toFile(compressedPath)
-                .then(() => {
-                finalUploadPath = compressedPath;
-            })
-                .catch((err) => {
+            const compressedImagePath = path.join("/tmp", `compressed-${filename}`);
+            try {
+                await sharp(tempPath)
+                    .resize({ width: 1920, withoutEnlargement: true })
+                    .jpeg({ quality: 82 })
+                    .toFile(compressedImagePath);
+                finalPath = compressedImagePath;
+            }
+            catch (err) {
                 console.log("❌ Image compression failed → using original", err);
-                finalUploadPath = tempPath;
-            });
+                finalPath = tempPath;
+            }
         }
-        // Upload to S3
-        const fileContent = fs.readFileSync(finalUploadPath);
-        const key = filename;
-        await s3.send(new PutObjectCommand({
-            Bucket: process.env.S3_BUCKET_NAME,
-            Key: key,
-            Body: fileContent,
-            ContentType: mimeType,
-            ContentDisposition: "inline",
-        }));
-        const url = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
-        // Remove temp files
-        const tempCompressed = `/tmp/compressed-${filename}`;
-        if (fs.existsSync(tempPath))
-            fs.unlinkSync(tempPath);
-        if (fs.existsSync(tempCompressed))
-            fs.unlinkSync(tempCompressed);
+        // ----- Upload to S3 using multipart -----
+        const fileStream = fs.createReadStream(finalPath);
+        const s3Upload = new Upload({
+            client: s3,
+            params: {
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: filename,
+                Body: fileStream,
+                ContentType: mimeType,
+                ContentDisposition: "inline",
+            },
+            queueSize: 4,
+            partSize: 5 * 1024 * 1024, // 5MB chunks
+            leavePartsOnError: false,
+        });
+        s3Upload.on("httpUploadProgress", (progress) => {
+            console.log("Upload progress:", progress);
+        });
+        await s3Upload.done();
+        const url = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${filename}`;
+        // Cleanup temp files
+        [tempPath, `/tmp/compressed-${filename}`].forEach((f) => {
+            if (fs.existsSync(f))
+                fs.unlinkSync(f);
+        });
         return res.status(200).json({
             success: true,
-            message: "Uploaded successfully",
             url,
-            key,
+            key: filename,
             filename,
             type: isVideo ? "video" : isImage ? "image" : "other",
         });
@@ -104,7 +110,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         return res.status(500).json({ error: "Upload failed" });
     }
 });
-// DELETE
+// DELETE route remains the same as your previous code
 router.delete("/delete", async (req, res) => {
     try {
         const { uri } = req.query;
