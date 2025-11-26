@@ -35,7 +35,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         // --------------------------
         // VIDEO COMPRESSION
         // --------------------------
-        if (isVideo) {
+        if (isVideo && false) {
             console.log("🎬 Compressing video...");
             const compressedPath = path.join("/tmp", `compressed-${filename}`);
             await new Promise((resolve) => {

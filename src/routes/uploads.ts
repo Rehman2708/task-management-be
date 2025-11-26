@@ -48,7 +48,7 @@ router.post(
       // --------------------------
       // VIDEO COMPRESSION
       // --------------------------
-      if (isVideo) {
+      if (isVideo && false) {
         console.log("🎬 Compressing video...");
         const compressedPath = path.join("/tmp", `compressed-${filename}`);
 
