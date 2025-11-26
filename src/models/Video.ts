@@ -18,6 +18,7 @@ export interface IVideo extends Document {
   url: string;
   createdBy: string;
   partnerWatched: boolean;
+  isLiked: boolean;
   viewedAt?: Date;
   createdByDetails: {
     name: string;
@@ -35,6 +36,7 @@ const VideoSchema = new mongoose.Schema<IVideo>(
     url: { type: String, required: true },
     createdBy: { type: String, required: true },
     partnerWatched: { type: Boolean, required: true, default: false },
+    isLiked: { type: Boolean, required: true, default: false },
     viewedAt: { type: Date },
     createdByDetails: {
       name: { type: String, required: false },

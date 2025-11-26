@@ -186,6 +186,7 @@ router.post("/", async (req: Request, res: Response) => {
       url,
       createdBy,
       totalComments: 0,
+      createdByDetails: { name: owner?.name, image: owner?.image },
     });
 
     if (partner?.notificationToken) {
@@ -266,6 +267,34 @@ router.patch(
       res
         .status(500)
         .json({ error: err.message || "Failed to mark as viewed" });
+    }
+  }
+);
+
+/**
+ * PATCH /videos/:id/like
+ */
+router.patch(
+  "/:id/like",
+  async (req: Request<{ id: string }>, res: Response) => {
+    try {
+      const video = await Video.findById(req.params.id);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      video.isLiked = !video.isLiked;
+      await video.save();
+
+      return res.json({
+        message: `Video ${video.isLiked ? "liked" : "unliked"}`,
+        video,
+      });
+    } catch (err: any) {
+      console.error("Error marking like:", err);
+      return res
+        .status(500)
+        .json({ error: err.message || "Failed to toggle like" });
     }
   }
 );

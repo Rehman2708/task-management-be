@@ -5,6 +5,7 @@ const VideoSchema = new mongoose.Schema({
     url: { type: String, required: true },
     createdBy: { type: String, required: true },
     partnerWatched: { type: Boolean, required: true, default: false },
+    isLiked: { type: Boolean, required: true, default: false },
     viewedAt: { type: Date },
     createdByDetails: {
         name: { type: String, required: false },

@@ -12,6 +12,7 @@ export function deleteVideos() {
       // Find videos eligible for deletion
       const oldVideos = await Video.find({
         partnerWatched: true,
+        isLiked: false,
         viewedAt: { $lte: cutoff },
       }).lean();
 
