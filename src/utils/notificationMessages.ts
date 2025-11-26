@@ -72,10 +72,12 @@ export const NotificationMessages = {
       commenterName: string;
       text: string;
     }) => {
+      const cleanText = props.text?.trim();
+      const showText = cleanText ? `: "${cleanText}"` : "";
       const variants = [
-        `${props.commenterName} commented on "${props.taskTitle}": "${props.text}"`,
-        `New comment from ${props.commenterName} on "${props.taskTitle}": "${props.text}"`,
-        `"${props.taskTitle}" got a comment from ${props.commenterName}: "${props.text}"`,
+        `${props.commenterName} commented on "${props.taskTitle}"${showText}`,
+        `New comment from ${props.commenterName} on "${props.taskTitle}"${showText}`,
+        `"${props.taskTitle}" got a comment from ${props.commenterName}${showText}`,
       ];
       const body = variants[Math.floor(Math.random() * variants.length)];
       return { title: `💬 Task Comment`, body };
@@ -87,9 +89,11 @@ export const NotificationMessages = {
       subtaskTitle: string;
       text: string;
     }) => {
+      const cleanText = props.text?.trim();
+      const showText = cleanText ? `: "${cleanText}"` : "";
       const variants = [
-        `${props.commenterName} commented on "${props.subtaskTitle}" in "${props.taskTitle}": "${props.text}"`,
-        `"${props.subtaskTitle}" has a new comment from ${props.commenterName}: "${props.text}"`,
+        `${props.commenterName} commented on "${props.subtaskTitle}" in "${props.taskTitle}"${showText}`,
+        `"${props.subtaskTitle}" has a new comment from ${props.commenterName}${showText}`,
       ];
       const body = variants[Math.floor(Math.random() * variants.length)];
       return { title: `💡 Subtask Comment`, body };
@@ -120,8 +124,6 @@ export const NotificationMessages = {
       changedFields: string[];
     }) => {
       const { changedFields, partnerName } = props;
-
-      // Convert fields array to human-readable string
       const fieldsText =
         changedFields.length === 1
           ? changedFields[0]
@@ -178,10 +180,14 @@ export const NotificationMessages = {
       listTitle: string;
       commenterName: string;
       text: string;
-    }) => ({
-      title: `💬 List Comment`,
-      body: `${props.commenterName} commented on "${props.listTitle}": "${props.text}"`,
-    }),
+    }) => {
+      const cleanText = props.text?.trim();
+      const showText = cleanText ? `: "${cleanText}"` : "";
+      return {
+        title: `💬 List Comment`,
+        body: `${props.commenterName} commented on "${props.listTitle}"${showText}`,
+      };
+    },
 
     ItemStatus: (props: {
       listTitle: string;
@@ -215,10 +221,14 @@ export const NotificationMessages = {
       noteTitle: string;
       commenterName: string;
       text: string;
-    }) => ({
-      title: `💬 Note Comment`,
-      body: `${props.commenterName} commented on "${props.noteTitle}": "${props.text}"`,
-    }),
+    }) => {
+      const cleanText = props.text?.trim();
+      const showText = cleanText ? `: "${cleanText}"` : "";
+      return {
+        title: `💬 Note Comment`,
+        body: `${props.commenterName} commented on "${props.noteTitle}"${showText}`,
+      };
+    },
 
     Pinned: (props: {
       noteTitle: string;
@@ -260,9 +270,13 @@ export const NotificationMessages = {
       videoTitle: string;
       commenterName: string;
       text: string;
-    }) => ({
-      title: `💬 Video Comment`,
-      body: `${props.commenterName} commented on "${props.videoTitle}": "${props.text}"`,
-    }),
+    }) => {
+      const cleanText = props.text?.trim();
+      const showText = cleanText ? `: "${cleanText}"` : "";
+      return {
+        title: `💬 Video Comment`,
+        body: `${props.commenterName} commented on "${props.videoTitle}"${showText}`,
+      };
+    },
   },
 };
