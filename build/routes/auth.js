@@ -85,17 +85,7 @@ router.post("/login", async (req, res) => {
         const user = await User.findOne({ userId });
         if (!user)
             return res.status(401).json({ message: "Invalid credentials" });
-        let isMatch = false;
-        if (user.password.startsWith("$2b$")) {
-            isMatch = await bcrypt.compare(password, user.password);
-        }
-        else {
-            if (user.password === password) {
-                isMatch = true;
-                user.password = await bcrypt.hash(password, 10); // auto-migrate old users
-                await user.save();
-            }
-        }
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch)
             return res.status(401).json({ message: "Invalid credentials" });
         if (notificationToken) {

@@ -22,11 +22,12 @@ export async function sendExpoPush(expoTokens = [], message, messageProps, data 
         title,
         body,
         data,
-        ios: groupId ? { threadId: groupId } : undefined,
+        ios: data.type ? { threadId: data.type } : undefined,
         android: {
             channelId: data.type,
-            ...(groupId ? { group: groupId } : {}),
+            ...(data.type ? { group: data.type } : {}),
         },
+        richContent: { image: data.image, video: data?.videoData?.url },
     }));
     try {
         // Send push
@@ -60,7 +61,7 @@ router.get("/:userId", async (req, res) => {
         const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
         // Delete notifications older than 7 days
         const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - 7);
+        cutoffDate.setDate(cutoffDate.getDate() - 4);
         const deleted = await Notification.deleteMany({
             createdAt: { $lt: cutoffDate },
         });

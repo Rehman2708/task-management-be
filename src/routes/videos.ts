@@ -196,7 +196,11 @@ router.post("/", async (req: Request, res: Response) => {
         [partner.notificationToken],
         NotificationMessages.Video.Added,
         { videoTitle: title.trim(), ownerName: owner?.name?.trim() ?? "" },
-        { type: NotificationData.Video, videoData: newVideo },
+        {
+          type: NotificationData.Video,
+          videoData: newVideo,
+          image: newVideo.thumbnail ?? undefined,
+        },
         [partner.userId],
         String(newVideo._id)
       );
@@ -230,7 +234,10 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
         [owner.notificationToken],
         NotificationMessages.Video.Deleted,
         { videoTitle: deletedVideo.title.trim() },
-        { type: NotificationData.Video },
+        {
+          type: NotificationData.Video,
+          image: deletedVideo.thumbnail ?? undefined,
+        },
         [owner.userId],
         String(deletedVideo._id)
       );
@@ -263,7 +270,11 @@ router.patch(
           [owner.notificationToken],
           NotificationMessages.Video.Viewed,
           { videoTitle: video.title },
-          { type: NotificationData.Video, videoData: video },
+          {
+            type: NotificationData.Video,
+            videoData: video,
+            image: video.thumbnail ?? undefined,
+          },
           [owner.userId],
           String(video._id)
         );
@@ -346,7 +357,12 @@ router.post("/:id/comment", async (req: Request, res: Response) => {
           commenterName: enriched.createdByDetails?.name ?? "Someone",
           text,
         },
-        { type: NotificationData.Video, videoData: video, isComment: true },
+        {
+          type: NotificationData.Video,
+          videoData: video,
+          isComment: true,
+          image: video.thumbnail ?? undefined,
+        },
         [partner.userId],
         String(video._id)
       );
