@@ -6,6 +6,7 @@ import { sendExpoPush } from "./notifications.js";
 import { TaskStatus } from "../enum/task.js";
 import { NotificationData } from "../enum/notification.js";
 import { NotificationMessages } from "../utils/notificationMessages.js";
+import { deleteFromS3 } from "./uploads.js";
 
 const router = Router();
 
@@ -320,6 +321,9 @@ router.delete("/:id", async (req, res) => {
     if (!userId) return res.status(400).json({ error: "userId is required" });
 
     const task = await Task.findByIdAndDelete(req.params.id);
+    if (task?.image) {
+      await deleteFromS3(task.image);
+    }
     if (!task) return res.status(404).json({ error: "Task not found" });
 
     const { owner, partner } = await getOwnerAndPartner(userId);

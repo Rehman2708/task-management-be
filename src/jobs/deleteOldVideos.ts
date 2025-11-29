@@ -2,14 +2,15 @@ import cron from "node-cron";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import Video from "../models/Video.js";
 import { s3 } from "../utils/s3Clients.js";
+import { deleteFromS3 } from "../routes/uploads.js";
+
 export function deleteVideos() {
   cron.schedule("30 0 * * *", async () => {
     console.log("🕒 CRON: Checking for old viewed videos to delete...");
 
     try {
-      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 
-      // Find videos eligible for deletion
       const oldVideos = await Video.find({
         partnerWatched: true,
         isLiked: false,
@@ -23,29 +24,27 @@ export function deleteVideos() {
 
       console.log(`📌 Found ${oldVideos.length} videos to remove`);
 
-      // Delete S3 files + DB entries
       for (const video of oldVideos) {
         try {
+          // Delete main video
           if (video.url) {
-            const key = decodeURIComponent(video.url.split("/").pop()!);
-
-            await s3.send(
-              new DeleteObjectCommand({
-                Bucket: process.env.S3_BUCKET_NAME!,
-                Key: key,
-              })
-            );
-            console.log(`🗑️ S3 Deleted: ${key}`);
+            await deleteFromS3(video.url);
           }
 
+          // Delete thumbnail
+          if (video.thumbnail) {
+            await deleteFromS3(video.thumbnail);
+          }
+
+          // Delete DB record
           await Video.deleteOne({ _id: video._id });
-          console.log(`🗑️ DB Deleted: ${video._id.toString()}`);
+          console.log(`🗑️ DB Deleted: ${video._id}`);
         } catch (err) {
-          console.log("❌ Error deleting video:", video._id, err);
+          console.error(`❌ Error deleting video ${video._id}:`, err);
         }
       }
 
-      console.log(`🏁 CRON: Completed deletion of old viewed videos`);
+      console.log("🏁 CRON: Completed deletion of old viewed videos");
     } catch (err) {
       console.error("❌ CRON: Failed to remove old videos", err);
     }

@@ -24,6 +24,19 @@ const upload = multer({
   limits: { fileSize: 200 * 1024 * 1024 }, // 200MB max
 });
 
+export const deleteFromS3 = async (url: string) => {
+  if (url) {
+    const key = decodeURIComponent(url.toString().split("/").pop()!);
+    const res = await s3.send(
+      new DeleteObjectCommand({
+        Bucket: process.env.S3_BUCKET_NAME,
+        Key: key,
+      })
+    );
+    return res;
+  }
+};
+
 router.post(
   "/upload",
   upload.single("file"),

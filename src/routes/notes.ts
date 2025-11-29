@@ -5,6 +5,7 @@ import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { NotificationData } from "../enum/notification.js";
 import { NotificationMessages } from "../utils/notificationMessages.js";
+import { deleteFromS3 } from "./uploads.js";
 
 const router = Router();
 
@@ -212,6 +213,9 @@ router.delete("/:id", async (req, res) => {
     if (!userId) return res.status(400).json({ error: "userId is required" });
 
     const deleted = await Notes.findByIdAndDelete(req.params.id);
+    if (deleted?.image) {
+      await deleteFromS3(deleted.image);
+    }
     if (!deleted) return res.status(404).json({ error: "Note not found" });
 
     const { owner, partner } = await getOwnerAndPartner(userId);

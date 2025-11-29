@@ -3,6 +3,7 @@ import { CommentSchema } from "./Task.js";
 const VideoSchema = new mongoose.Schema({
     title: { type: String, required: true },
     url: { type: String, required: true },
+    thumbnail: { type: String, required: false },
     createdBy: { type: String, required: true },
     partnerWatched: { type: Boolean, required: true, default: false },
     isLiked: { type: Boolean, required: true, default: false },

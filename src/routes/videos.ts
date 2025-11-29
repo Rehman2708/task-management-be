@@ -7,6 +7,7 @@ import { NotificationData } from "../enum/notification.js";
 import { IUser } from "../models/User.js";
 import { IVideo, IVideoComment } from "../models/Video.js";
 import { NotificationMessages } from "../utils/notificationMessages.js";
+import { deleteFromS3 } from "./uploads.js";
 
 const router = Router();
 
@@ -174,7 +175,7 @@ router.get("/all/:ownerUserId", async (req: Request, res: Response) => {
  */
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const { title, url, createdBy } = req.body;
+    const { title, url, createdBy, thumbnail } = req.body;
     if (!title || !url || !createdBy)
       return res
         .status(400)
@@ -184,6 +185,7 @@ router.post("/", async (req: Request, res: Response) => {
     const newVideo = await Video.create({
       title,
       url,
+      thumbnail,
       createdBy,
       totalComments: 0,
       createdByDetails: { name: owner?.name, image: owner?.image },
@@ -213,6 +215,12 @@ router.post("/", async (req: Request, res: Response) => {
 router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   try {
     const deletedVideo = await Video.findByIdAndDelete(req.params.id);
+    if (deletedVideo?.url) {
+      deleteFromS3(deletedVideo.url);
+    }
+    if (deletedVideo?.thumbnail) {
+      deleteFromS3(deletedVideo.thumbnail);
+    }
     if (!deletedVideo)
       return res.status(404).json({ error: "Video not found" });
 

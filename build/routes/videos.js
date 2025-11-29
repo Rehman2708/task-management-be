@@ -5,6 +5,7 @@ import { sendExpoPush } from "./notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
 import { NotificationData } from "../enum/notification.js";
 import { NotificationMessages } from "../utils/notificationMessages.js";
+import { deleteFromS3 } from "./uploads.js";
 const router = Router();
 /* ---------------------------- Helper Functions ---------------------------- */
 async function enrichComment(comment) {
@@ -125,7 +126,7 @@ router.get("/all/:ownerUserId", async (req, res) => {
  */
 router.post("/", async (req, res) => {
     try {
-        const { title, url, createdBy } = req.body;
+        const { title, url, createdBy, thumbnail } = req.body;
         if (!title || !url || !createdBy)
             return res
                 .status(400)
@@ -134,6 +135,7 @@ router.post("/", async (req, res) => {
         const newVideo = await Video.create({
             title,
             url,
+            thumbnail,
             createdBy,
             totalComments: 0,
             createdByDetails: { name: owner?.name, image: owner?.image },
@@ -154,6 +156,12 @@ router.post("/", async (req, res) => {
 router.delete("/:id", async (req, res) => {
     try {
         const deletedVideo = await Video.findByIdAndDelete(req.params.id);
+        if (deletedVideo?.url) {
+            deleteFromS3(deletedVideo.url);
+        }
+        if (deletedVideo?.thumbnail) {
+            deleteFromS3(deletedVideo.thumbnail);
+        }
         if (!deletedVideo)
             return res.status(404).json({ error: "Video not found" });
         const { owner } = await getOwnerAndPartner(deletedVideo.createdBy);

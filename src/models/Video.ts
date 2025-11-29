@@ -16,6 +16,7 @@ export interface IVideo extends Document {
   _id: Types.ObjectId;
   title: string;
   url: string;
+  thumbnail?: string;
   createdBy: string;
   partnerWatched: boolean;
   isLiked: boolean;
@@ -34,6 +35,7 @@ const VideoSchema = new mongoose.Schema<IVideo>(
   {
     title: { type: String, required: true },
     url: { type: String, required: true },
+    thumbnail: { type: String, required: false },
     createdBy: { type: String, required: true },
     partnerWatched: { type: Boolean, required: true, default: false },
     isLiked: { type: Boolean, required: true, default: false },
