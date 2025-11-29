@@ -3,6 +3,7 @@ import User, { IUserDocument, IUser } from "../models/User.js";
 import { sendExpoPush } from "./notifications.js";
 import { NotificationData } from "../enum/notification.js";
 import { NotificationMessages } from "../utils/notificationMessages.js";
+import bcrypt from "bcrypt"; // ⬅️ added
 
 const router = Router();
 
@@ -85,11 +86,12 @@ router.post("/register", async (req, res) => {
       if (!partner)
         return res.status(400).json({ message: "Partner userId not found" });
     }
+    const hashedPassword = await bcrypt.hash(password, 10); // ⬅️ added
 
     const newUser = await User.create({
       name,
       userId,
-      password,
+      password: hashedPassword, // ⬅️ modified
       notificationToken,
       partnerUserId: partner?.userId ?? null,
     });
@@ -121,8 +123,23 @@ router.post("/login", async (req, res) => {
         .status(400)
         .json({ message: "userId and password are required" });
 
-    const user = await User.findOne({ userId, password });
+    const user = await User.findOne({ userId });
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
+
+    let isMatch = false;
+
+    if (user.password.startsWith("$2b$")) {
+      isMatch = await bcrypt.compare(password, user.password);
+    } else {
+      if (user.password === password) {
+        isMatch = true;
+        user.password = await bcrypt.hash(password, 10); // auto-migrate old users
+        await user.save();
+      }
+    }
+
+    if (!isMatch)
+      return res.status(401).json({ message: "Invalid credentials" });
 
     if (notificationToken) {
       user.notificationToken = notificationToken;
@@ -270,7 +287,6 @@ router.put("/update-profile", async (req, res) => {
     if (image !== undefined) user.image = image;
     await user.save();
 
-    // Notify partner if name or image changed and partner exists
     if ((nameChanged || imageChanged) && user.partnerUserId) {
       const partner = await User.findOne({ userId: user.partnerUserId });
       if (partner?.notificationToken) {
@@ -374,10 +390,11 @@ router.put("/update-password", async (req, res) => {
     const user = await User.findOne({ userId });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (user.password !== oldPassword)
+    const isMatch = await bcrypt.compare(oldPassword, user.password); // ⬅️ added
+    if (!isMatch)
       return res.status(401).json({ message: "Old password is incorrect" });
 
-    user.password = newPassword;
+    user.password = await bcrypt.hash(newPassword, 10); // ⬅️ modified
     await user.save();
 
     res.json({
