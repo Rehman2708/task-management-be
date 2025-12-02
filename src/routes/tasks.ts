@@ -424,7 +424,7 @@ router.post("/:id/comment", async (req, res) => {
           type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
-          image: task.image ?? undefined,
+          image: image ?? task.image ?? undefined,
           isComment: true,
         },
         [partner.userId],

@@ -121,23 +121,30 @@ export const NotificationMessages = {
 
     PartnerProfileUpdated: (props: {
       partnerName: string;
-      changedFields: string[];
+      changedFields: {
+        field: string;
+        oldValue: string;
+        newValue: string;
+      }[];
     }) => {
       const { changedFields, partnerName } = props;
-      const fieldsText =
-        changedFields.length === 1
-          ? changedFields[0]
-          : changedFields.slice(0, -1).join(", ") +
-            " and " +
-            changedFields.slice(-1);
+
+      // Build readable text for each field
+      const fieldsText = changedFields
+        .map((f) => `${f.field} (${f.oldValue} → ${f.newValue})`)
+        .join(", ");
 
       const variants = [
         `${partnerName} updated their ${fieldsText}. Take a look!`,
-        `Your partner, ${partnerName}, has changed their ${fieldsText}.`,
+        `Your partner, ${partnerName}, changed their ${fieldsText}.`,
       ];
 
       const body = variants[Math.floor(Math.random() * variants.length)];
-      return { title: `📝 Profile Update`, body };
+
+      return {
+        title: "📝 Profile Update",
+        body,
+      };
     },
   },
 

@@ -283,7 +283,7 @@ router.post("/:id/comment", async (req, res) => {
                 type: NotificationData.List,
                 listId: list._id,
                 isComment: true,
-                image: list.image ?? undefined,
+                image: image ?? list.image ?? undefined,
             }, [partner.userId], String(list._id));
         }
         res.status(201).json({

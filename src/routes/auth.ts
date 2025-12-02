@@ -269,16 +269,51 @@ router.put("/update-profile", async (req, res) => {
     const user = await User.findOne({ userId });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const nameChanged = name && name !== user.name;
+    // Detect changes (old → new)
+    const nameChanged = name !== undefined && name !== user.name;
+
     const imageChanged = image !== undefined && image !== user.image;
 
-    if (name) user.name = name;
-    if (about) user.about = about;
+    const aboutChanged = about !== undefined && about !== user.about;
+
+    // Build changed fields object (for notification)
+    const changedFields = [];
+
+    if (nameChanged) {
+      changedFields.push({
+        field: "name",
+        oldValue: String(user.name ?? ""),
+        newValue: String(name ?? ""),
+      });
+    }
+
+    if (imageChanged) {
+      changedFields.push({
+        field: "image",
+        oldValue: String(user.image ?? ""),
+        newValue: String(image ?? ""),
+      });
+    }
+
+    if (aboutChanged) {
+      changedFields.push({
+        field: "about",
+        oldValue: String(user.about ?? ""),
+        newValue: String(about ?? ""),
+      });
+    }
+
+    // Update fields
+    if (name !== undefined) user.name = name;
+    if (about !== undefined) user.about = about;
     if (image !== undefined) user.image = image;
+
     await user.save();
 
-    if ((nameChanged || imageChanged) && user.partnerUserId) {
+    // Send notification to partner
+    if (changedFields.length > 0 && user.partnerUserId) {
       const partner = await User.findOne({ userId: user.partnerUserId });
+
       if (partner?.notificationToken) {
         await sendExpoPush(
           [partner.notificationToken],
@@ -286,12 +321,12 @@ router.put("/update-profile", async (req, res) => {
           {
             partnerName: user.name,
             isForUser: false,
-            changedFields: [
-              ...(nameChanged ? ["name"] : []),
-              ...(imageChanged ? ["image"] : []),
-            ],
+            changedFields,
           },
-          { type: NotificationData.Profile },
+          {
+            type: NotificationData.Profile,
+            image: image ?? user.image ?? undefined,
+          },
           [partner.userId]
         );
       }

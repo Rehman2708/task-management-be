@@ -361,7 +361,7 @@ router.post("/:id/comment", async (req: Request, res: Response) => {
           type: NotificationData.Video,
           videoData: video,
           isComment: true,
-          image: video.thumbnail ?? undefined,
+          image: image ?? video.thumbnail ?? undefined,
         },
         [partner.userId],
         String(video._id)
