@@ -100,6 +100,28 @@ router.get("/:ownerUserId", async (req, res) => {
     }
 });
 /**
+ * GET /videos/video/:videoId
+ */
+router.get("/video/:videoId", async (req, res) => {
+    try {
+        const { videoId } = req.params;
+        // Fetch raw video
+        const video = await Video.findById(videoId).lean();
+        if (!video) {
+            return res.status(404).json({ error: "Video not found" });
+        }
+        // Enrich video just like list API
+        const enrichedVideo = await enrichVideo(video);
+        res.json({ video: enrichedVideo });
+    }
+    catch (err) {
+        console.error("Error fetching video:", err);
+        res.status(500).json({
+            error: err.message || "Failed to fetch video",
+        });
+    }
+});
+/**
  * GET /videos/all/:ownerUserId
  */
 router.get("/all/:ownerUserId", async (req, res) => {
@@ -220,6 +242,9 @@ router.patch("/:id/like", async (req, res) => {
             return res.status(404).json({ error: "Video not found" });
         }
         video.isLiked = !video.isLiked;
+        if (!video.partnerWatched) {
+            video.partnerWatched = true;
+        }
         await video.save();
         return res.json({
             message: `Video ${video.isLiked ? "liked" : "unliked"}`,
@@ -254,6 +279,9 @@ router.post("/:id/comment", async (req, res) => {
         };
         video.comments.push(newComment);
         video.totalComments = video.comments.length;
+        if (!video.partnerWatched) {
+            video.partnerWatched = true;
+        }
         await video.save();
         const enriched = await enrichComment(newComment);
         video.comments[video.comments.length - 1] = enriched;
