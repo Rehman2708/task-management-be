@@ -3,6 +3,7 @@ import mongoose, { Document } from "mongoose";
 export interface IUser {
   name: string;
   userId: string;
+  email?: string | null;
   partnerUserId?: string | null;
   password: string;
   createdAt: Date;
@@ -21,6 +22,7 @@ const UserSchema = new mongoose.Schema<IUserDocument>(
   {
     name: { type: String, required: true },
     userId: { type: String, required: true, unique: true, immutable: true },
+    email: { type: String, required: false, unique: true, sparse: true },
     partnerUserId: { type: String, default: null },
     password: { type: String, required: true },
     notificationToken: { type: String, required: false },
