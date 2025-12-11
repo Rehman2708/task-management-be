@@ -78,11 +78,11 @@ export async function sendExpoPush(expoTokens = [], message, messageProps, data 
         if (!response.ok) {
             throw new Error(`Push notification failed: ${response.status} ${response.statusText}`);
         }
-        const result = await response.json();
+        const result = (await response.json());
         // Log any errors from Expo
-        if (result.data) {
+        if (result?.data) {
             result.data.forEach((item, index) => {
-                if (item.status === "error") {
+                if (item?.status === "error") {
                     console.error(`Push notification error for token ${validTokens[index]}:`, item.message);
                 }
             });
