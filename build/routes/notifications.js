@@ -1,6 +1,32 @@
 import { Router } from "express";
 import fetch from "node-fetch";
 import Notification from "../models/Notification.js";
+// Helper functions for notification grouping
+function getItemName(data) {
+    if (data.taskId)
+        return "task";
+    if (data.noteId)
+        return "note";
+    if (data.listId)
+        return "list";
+    if (data.videoData)
+        return "video";
+    return "item";
+}
+function getItemType(type) {
+    switch (type) {
+        case "task":
+            return "Task";
+        case "note":
+            return "Note";
+        case "list":
+            return "List";
+        case "video":
+            return "Video";
+        default:
+            return "Item";
+    }
+}
 export async function sendExpoPush(expoTokens = [], message, messageProps, data = {}, toUserIds = [], groupId) {
     if (!expoTokens.length)
         return;
@@ -106,44 +132,40 @@ export async function sendExpoPush(expoTokens = [], message, messageProps, data 
 // Handle grouped comment notifications (like WhatsApp)
 async function handleGroupedCommentNotification(expoTokens, title, body, data, toUserIds, groupId) {
     try {
-        // Check for recent notifications in the same group (within last 5 minutes)
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        // Check for recent notifications in the same group (within last 10 minutes)
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
         const recentNotifications = await Notification.find({
             groupId,
             toUserIds: { $in: toUserIds },
-            createdAt: { $gte: fiveMinutesAgo },
+            createdAt: { $gte: tenMinutesAgo },
             "data.isComment": true,
         })
             .sort({ createdAt: -1 })
-            .limit(10); // Limit to prevent memory issues
+            .limit(10);
         let finalTitle = title;
         let finalBody = body;
         let commentCount = 1;
         if (recentNotifications.length > 0) {
-            // Group the comments
             commentCount = recentNotifications.length + 1;
-            // Extract the base title (e.g., "Task Comment", "Note Comment")
-            const baseTitle = title;
-            // Create grouped message
+            // Get the item name from data
+            const itemName = getItemName(data);
+            const itemType = getItemType(data.type);
             if (commentCount === 2) {
-                finalTitle = baseTitle;
+                // Show both comments
+                finalTitle = `💬 ${commentCount} comments`;
                 finalBody = `${recentNotifications[0].body}\n${body}`;
             }
             else {
-                finalTitle = `${baseTitle} (${commentCount} messages)`;
-                // Show last 2 comments + count
-                const lastComment = recentNotifications[0].body;
-                finalBody = `${lastComment}\n${body}`;
-                if (commentCount > 2) {
-                    finalBody = `${commentCount - 2} earlier messages\n${finalBody}`;
-                }
+                // Show count and latest comment
+                finalTitle = `💬 ${commentCount} comments on ${itemName}`;
+                finalBody = `${body}`;
             }
             // Delete old notifications in this group to avoid duplicates
             await Notification.deleteMany({
                 groupId,
                 toUserIds: { $in: toUserIds },
                 "data.isComment": true,
-                createdAt: { $gte: fiveMinutesAgo },
+                createdAt: { $gte: tenMinutesAgo },
             });
         }
         // Send the grouped notification
@@ -270,7 +292,7 @@ router.get("/:userId", async (req, res) => {
         const filter = { toUserIds: userId };
         const totalCount = await Notification.countDocuments(filter);
         const totalPages = Math.ceil(totalCount / pageSize);
-        // Fetch notifications (unread first, then newest first)
+        // Fetch notifications with better grouping
         const notifications = await Notification.aggregate([
             { $match: filter },
             {
@@ -287,9 +309,25 @@ router.get("/:userId", async (req, res) => {
             { $skip: (page - 1) * pageSize },
             { $limit: pageSize },
         ]);
+        // Process notifications to improve grouped comment display
+        const processedNotifications = notifications.map((notification) => {
+            if (notification.data?.isComment &&
+                notification.data?.isGrouped &&
+                notification.data?.commentCount > 1) {
+                // Improve grouped notification display
+                const itemName = getItemName(notification.data);
+                const itemType = getItemType(notification.data.type);
+                return {
+                    ...notification,
+                    title: `💬 ${notification.data.commentCount} comments`,
+                    body: `${notification.data.commentCount} new comments on ${itemName}`,
+                };
+            }
+            return notification;
+        });
         // Send response first
         res.json({
-            notifications,
+            notifications: processedNotifications,
             totalPages,
             currentPage: page,
         });

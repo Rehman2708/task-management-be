@@ -223,7 +223,7 @@ router.patch("/pin/:id", async (req, res) => {
         res.status(500).json({ error: err.message || "Failed to pin note" });
     }
 });
-/* ------------------------ ADD COMMENT ------------------------ */
+/* ------------------------ ADD COMMENT - OPTIMIZED ------------------------ */
 router.post("/:id/comment", async (req, res) => {
     try {
         const { createdBy, text, image } = req.body;
@@ -231,35 +231,48 @@ router.post("/:id/comment", async (req, res) => {
             return res
                 .status(400)
                 .json({ error: "createdBy and text or image are required" });
-        const note = await Notes.findById(req.params.id);
-        if (!note)
-            return res.status(404).json({ error: "Note not found" });
         const newComment = {
             text,
             createdBy,
             createdAt: new Date(),
             image,
         };
-        const enrichedComment = await enrichNoteComment(newComment);
-        note.comments.push(newComment);
-        note.totalComments = note.comments.length;
-        await note.save();
-        const { partner } = await getOwnerAndPartner(createdBy);
-        if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], NotificationMessages.Note.Comment, {
-                noteTitle: note.title,
-                commenterName: enrichedComment.createdByDetails?.name ?? "Someone",
-                text,
-            }, {
-                type: NotificationData.Note,
-                noteId: note._id,
-                isComment: true,
-                image: image ?? note.image ?? undefined,
-            }, [partner.userId], String(note._id));
-        }
+        // Use atomic update for better performance
+        const note = await Notes.findByIdAndUpdate(req.params.id, {
+            $push: { comments: newComment },
+            $inc: { totalComments: 1 },
+        }, {
+            new: true,
+            select: "comments totalComments title image _id", // Only select needed fields
+        });
+        if (!note)
+            return res.status(404).json({ error: "Note not found" });
+        // Send response immediately
         res.status(201).json({
             comments: note.comments,
             totalComments: note.totalComments,
+        });
+        // Handle notifications asynchronously (fire and forget)
+        setImmediate(async () => {
+            try {
+                const enrichedComment = await enrichNoteComment(newComment);
+                const { partner } = await getOwnerAndPartner(createdBy);
+                if (partner?.notificationToken) {
+                    await sendExpoPush([partner.notificationToken], NotificationMessages.Note.Comment, {
+                        noteTitle: note.title,
+                        commenterName: enrichedComment.createdByDetails?.name ?? "Someone",
+                        text,
+                    }, {
+                        type: NotificationData.Note,
+                        noteId: note._id,
+                        isComment: true,
+                        image: image ?? note.image ?? undefined,
+                    }, [partner.userId], String(note._id));
+                }
+            }
+            catch (notifErr) {
+                console.error("Note notification error:", notifErr);
+            }
         });
     }
     catch (err) {
@@ -267,16 +280,34 @@ router.post("/:id/comment", async (req, res) => {
         res.status(500).json({ error: err.message || "Failed to add comment" });
     }
 });
-/* ------------------------ GET COMMENTS ------------------------ */
+/* ------------------------ GET COMMENTS - OPTIMIZED ------------------------ */
 router.get("/:id/comments", async (req, res) => {
     try {
-        const note = await Notes.findById(req.params.id).lean();
+        // Only select comments and totalComments fields for better performance
+        const note = await Notes.findById(req.params.id)
+            .select("comments totalComments")
+            .lean();
         if (!note)
             return res.status(404).json({ error: "Note not found" });
-        const comments = await Promise.all((note.comments || []).map(enrichNoteComment));
-        await Notes.findByIdAndUpdate(note._id, {
-            $set: { totalComments: comments.length },
+        // Set cache headers for better performance
+        res.set({
+            "Cache-Control": "private, max-age=30", // Cache for 30 seconds
+            ETag: `"${note._id}-${note.comments?.length || 0}"`,
         });
+        const comments = await Promise.all((note.comments || []).map(enrichNoteComment));
+        // Only update totalComments if it's different (avoid unnecessary writes)
+        if (note.totalComments !== comments.length) {
+            setImmediate(async () => {
+                try {
+                    await Notes.findByIdAndUpdate(note._id, {
+                        $set: { totalComments: comments.length },
+                    });
+                }
+                catch (updateErr) {
+                    console.error("Update totalComments error:", updateErr);
+                }
+            });
+        }
         res.json({
             comments,
             totalComments: comments.length,

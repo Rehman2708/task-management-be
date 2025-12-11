@@ -351,7 +351,7 @@ router.patch(
 );
 
 /**
- * POST /videos/:id/comment
+ * POST /videos/:id/comment - OPTIMIZED
  */
 router.post("/:id/comment", async (req: Request, res: Response) => {
   try {
@@ -361,9 +361,6 @@ router.post("/:id/comment", async (req: Request, res: Response) => {
         .status(400)
         .json({ error: "createdBy and text or image are required" });
 
-    const video = await Video.findById(req.params.id);
-    if (!video) return res.status(404).json({ error: "Video not found" });
-
     const newComment: IVideoComment = {
       text,
       createdBy,
@@ -371,65 +368,106 @@ router.post("/:id/comment", async (req: Request, res: Response) => {
       image,
     };
 
-    video.comments.push(newComment);
-    video.totalComments = video.comments.length;
-    if (!video.partnerWatched) {
-      video.partnerWatched = true;
-    }
-    await video.save();
+    // Use atomic update for better performance
+    const video = await Video.findByIdAndUpdate(
+      req.params.id,
+      {
+        $push: { comments: newComment },
+        $inc: { totalComments: 1 },
+        $set: { partnerWatched: true }, // Mark as watched when commenting
+      },
+      {
+        new: true,
+        select: "comments totalComments title thumbnail _id", // Only select needed fields
+      }
+    );
 
-    const enriched = await enrichComment(newComment);
-    video.comments[video.comments.length - 1] = enriched;
-    await video.save();
+    if (!video) return res.status(404).json({ error: "Video not found" });
 
-    const { partner } = await getOwnerAndPartner(createdBy);
-    if (partner?.notificationToken) {
-      await sendExpoPush(
-        [partner.notificationToken],
-        NotificationMessages.Video.Comment,
-        {
-          videoTitle: video.title,
-          commenterName: enriched.createdByDetails?.name ?? "Someone",
-          text,
-        },
-        {
-          type: NotificationData.Video,
-          videoData: video,
-          isComment: true,
-          image: image ?? video.thumbnail ?? undefined,
-        },
-        [partner.userId],
-        String(video._id)
-      );
-    }
+    // Send response immediately
+    res.status(201).json({
+      comments: video.comments,
+      totalComments: video.totalComments,
+    });
 
-    res
-      .status(201)
-      .json({ comments: video.comments, totalComments: video.totalComments });
+    // Handle enrichment and notifications asynchronously (fire and forget)
+    setImmediate(async () => {
+      try {
+        const enriched = await enrichComment(newComment);
+
+        // Update the last comment with enriched data (since it's the newest one)
+        await Video.findByIdAndUpdate(req.params.id, {
+          $set: { [`comments.${video.comments.length - 1}`]: enriched },
+        });
+
+        const { partner } = await getOwnerAndPartner(createdBy);
+        if (partner?.notificationToken) {
+          await sendExpoPush(
+            [partner.notificationToken],
+            NotificationMessages.Video.Comment,
+            {
+              videoTitle: video.title,
+              commenterName: enriched.createdByDetails?.name ?? "Someone",
+              text,
+            },
+            {
+              type: NotificationData.Video,
+              videoData: video,
+              isComment: true,
+              image: image ?? video.thumbnail ?? undefined,
+            },
+            [partner.userId],
+            String(video._id)
+          );
+        }
+      } catch (notifErr) {
+        console.error("Video notification error:", notifErr);
+      }
+    });
   } catch (err: any) {
-    console.error("Add comment error:", err);
+    console.error("Add video comment error:", err);
     res.status(500).json({ error: err.message || "Failed to add comment" });
   }
 });
 
 /**
- * GET /videos/:id/comments
+ * GET /videos/:id/comments - OPTIMIZED
  */
 router.get("/:id/comments", async (req: Request, res: Response) => {
   try {
-    const video = await Video.findById(req.params.id).lean<IVideo>();
+    // Only select comments and totalComments fields for better performance
+    const video = await Video.findById(req.params.id)
+      .select("comments totalComments")
+      .lean<IVideo>();
+
     if (!video) return res.status(404).json({ error: "Video not found" });
+
+    // Set cache headers for better performance
+    res.set({
+      "Cache-Control": "private, max-age=30", // Cache for 30 seconds
+      ETag: `"${video._id}-${video.comments?.length || 0}"`,
+    });
 
     const comments = await Promise.all(
       (video.comments || []).map(enrichComment)
     );
-    await Video.findByIdAndUpdate(video._id, {
-      $set: { totalComments: comments.length },
-    });
+
+    // Only update totalComments if it's different (avoid unnecessary writes)
+    if (video.totalComments !== comments.length) {
+      setImmediate(async () => {
+        try {
+          await Video.findByIdAndUpdate(video._id, {
+            $set: { totalComments: comments.length },
+          });
+        } catch (updateErr) {
+          console.error("Update totalComments error:", updateErr);
+        }
+      });
+    }
 
     res.json({ comments, totalComments: comments.length });
   } catch (err: any) {
-    console.error("Get comments error:", err);
+    console.error("Get video comments error:", err);
     res.status(500).json({ error: err.message || "Failed to fetch comments" });
   }
 });

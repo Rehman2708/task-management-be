@@ -397,7 +397,7 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
   }
 });
 
-/** 🔹 Add task-level comment */
+/** 🔹 Add task-level comment - OPTIMIZED */
 router.post("/:id/comment", async (req, res) => {
   try {
     const { by, text, image } = req.body;
@@ -406,40 +406,56 @@ router.post("/:id/comment", async (req, res) => {
         .status(400)
         .json({ error: "by and text or image are required" });
 
-    const task: any = await Task.findById(req.params.id);
+    const newComment = { by, text, createdAt: new Date(), image };
+
+    // Use findByIdAndUpdate for atomic operation - faster than find + save
+    const task: any = await Task.findByIdAndUpdate(
+      req.params.id,
+      {
+        $push: { comments: newComment },
+        $inc: { totalComments: 1 },
+      },
+      { new: true, select: "comments title status image _id" } // Only select needed fields
+    );
+
     if (!task) return res.status(404).json({ error: "Task not found" });
 
-    task.comments.push({ by, text, createdAt: new Date(), image });
-    await task.save();
-
-    const { owner, partner } = await getOwnerAndPartner(by);
-    const commenterName = await getDisplayName(by);
-
-    if (partner?.notificationToken) {
-      await sendExpoPush(
-        [partner.notificationToken],
-        NotificationMessages.Task.Comment,
-        { taskTitle: task.title.trim(), commenterName, text },
-        {
-          type: NotificationData.Task,
-          taskId: task._id,
-          isActive: task.status === TaskStatus.Active,
-          image: image ?? task.image ?? undefined,
-          isComment: true,
-        },
-        [partner.userId],
-        String(task._id)
-      );
-    }
-
+    // Send response immediately - don't wait for notifications
     res.json(task);
+
+    // Handle notifications asynchronously (fire and forget)
+    setImmediate(async () => {
+      try {
+        const { owner, partner } = await getOwnerAndPartner(by);
+        const commenterName = await getDisplayName(by);
+
+        if (partner?.notificationToken) {
+          await sendExpoPush(
+            [partner.notificationToken],
+            NotificationMessages.Task.Comment,
+            { taskTitle: task.title.trim(), commenterName, text },
+            {
+              type: NotificationData.Task,
+              taskId: task._id,
+              isActive: task.status === TaskStatus.Active,
+              image: image ?? task.image ?? undefined,
+              isComment: true,
+            },
+            [partner.userId],
+            String(task._id)
+          );
+        }
+      } catch (notifErr) {
+        console.error("Notification error:", notifErr);
+      }
+    });
   } catch (err: any) {
     console.error("Add comment error:", err);
     res.status(500).json({ error: err.message || "Failed to add comment" });
   }
 });
 
-/** 🔹 Add subtask comment */
+/** 🔹 Add subtask comment - OPTIMIZED */
 router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
   try {
     const { userId, text, image } = req.body;
@@ -448,47 +464,70 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
         .status(400)
         .json({ error: "userId and text or image required" });
 
-    const task: any = await Task.findById(req.params.id);
-    if (!task) return res.status(404).json({ error: "Task not found" });
-
-    const subtask = task.subtasks?.id(req.params.subtaskId);
-    if (!subtask) return res.status(404).json({ error: "Subtask not found" });
-
-    subtask.comments.push({
+    const newComment = {
       text,
       createdBy: userId,
       createdAt: new Date(),
       image,
-    });
-    await task.save();
+    };
 
-    const { owner, partner } = await getOwnerAndPartner(userId);
-    const commenterName = await getDisplayName(userId);
+    // Use atomic update for better performance
+    const task: any = await Task.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        "subtasks._id": req.params.subtaskId,
+      },
+      {
+        $push: { "subtasks.$.comments": newComment },
+        $inc: { "subtasks.$.totalComments": 1 },
+      },
+      {
+        new: true,
+        select: "subtasks title status image _id", // Only select needed fields
+      }
+    );
 
-    if (partner?.notificationToken) {
-      await sendExpoPush(
-        [partner.notificationToken],
-        NotificationMessages.Task.SubtaskComment,
-        {
-          taskTitle: task.title.trim(),
-          commenterName,
-          subtaskTitle: subtask.title,
-          text,
-        },
-        {
-          type: NotificationData.Task,
-          taskId: task._id,
-          isActive: task.status === TaskStatus.Active,
-          image: task.image ?? undefined,
-          isComment: true,
-          commentSubtaskId: subtask._id,
-        },
-        [partner.userId],
-        String(task._id)
-      );
-    }
+    if (!task)
+      return res.status(404).json({ error: "Task or subtask not found" });
 
+    const subtask = task.subtasks?.id(req.params.subtaskId);
+    if (!subtask) return res.status(404).json({ error: "Subtask not found" });
+
+    // Send response immediately
     res.json(task);
+
+    // Handle notifications asynchronously (fire and forget)
+    setImmediate(async () => {
+      try {
+        const { owner, partner } = await getOwnerAndPartner(userId);
+        const commenterName = await getDisplayName(userId);
+
+        if (partner?.notificationToken) {
+          await sendExpoPush(
+            [partner.notificationToken],
+            NotificationMessages.Task.SubtaskComment,
+            {
+              taskTitle: task.title.trim(),
+              commenterName,
+              subtaskTitle: subtask.title,
+              text,
+            },
+            {
+              type: NotificationData.Task,
+              taskId: task._id,
+              isActive: task.status === TaskStatus.Active,
+              image: task.image ?? undefined,
+              isComment: true,
+              commentSubtaskId: subtask._id,
+            },
+            [partner.userId],
+            String(task._id)
+          );
+        }
+      } catch (notifErr) {
+        console.error("Notification error:", notifErr);
+      }
+    });
   } catch (err: any) {
     console.error("Add subtask comment error:", err);
     res
@@ -497,12 +536,21 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
   }
 });
 
-/** 🔹 task comments */
+/** 🔹 task comments - OPTIMIZED */
 router.get("/:taskId/comments", async (req, res) => {
   try {
     const { taskId } = req.params;
-    const task = await Task.findById(taskId, "comments").lean();
+    const task = await Task.findById(taskId)
+      .select("comments totalComments")
+      .lean();
+
     if (!task) return res.status(404).json({ error: "Task not found" });
+
+    // Set cache headers for better performance
+    res.set({
+      "Cache-Control": "private, max-age=30", // Cache for 30 seconds
+      ETag: `"${taskId}-${task.comments?.length || 0}"`,
+    });
 
     // Enrich with user details only for the comments
     const enrichedComments = await Promise.all(
@@ -519,17 +567,24 @@ router.get("/:taskId/comments", async (req, res) => {
   }
 });
 
-/** 🔹 subtask comments */
+/** 🔹 subtask comments - OPTIMIZED */
 router.get("/:taskId/subtask/:subtaskId/comments", async (req, res) => {
   try {
     const { taskId, subtaskId } = req.params;
-    const task = await Task.findById(taskId, "subtasks").lean();
+    const task = await Task.findById(taskId).select("subtasks").lean();
+
     if (!task) return res.status(404).json({ error: "Task not found" });
 
     const subtask = task.subtasks?.find(
       (st) => st._id.toString() === subtaskId
     );
     if (!subtask) return res.status(404).json({ error: "Subtask not found" });
+
+    // Set cache headers for better performance
+    res.set({
+      "Cache-Control": "private, max-age=30", // Cache for 30 seconds
+      ETag: `"${taskId}-${subtaskId}-${subtask.comments?.length || 0}"`,
+    });
 
     // Enrich subtask comments with user details
     const enrichedComments = await Promise.all(

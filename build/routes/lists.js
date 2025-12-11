@@ -255,7 +255,7 @@ router.patch("/toggle-item/:listId/:itemIndex", async (req, res) => {
         res.status(500).json({ error: err.message || "Failed to toggle item" });
     }
 });
-/* ------------------------ ADD COMMENT ------------------------ */
+/* ------------------------ ADD COMMENT - OPTIMIZED ------------------------ */
 router.post("/:id/comment", async (req, res) => {
     try {
         const { createdBy, text, image } = req.body;
@@ -263,32 +263,43 @@ router.post("/:id/comment", async (req, res) => {
             return res
                 .status(400)
                 .json({ error: "createdBy and text or image are required" });
-        console.log(req.body);
-        const list = await Lists.findById(req.params.id);
+        const newComment = { text, createdBy, createdAt: new Date(), image };
+        // Use atomic update for better performance
+        const list = await Lists.findByIdAndUpdate(req.params.id, {
+            $push: { comments: newComment },
+            $inc: { totalComments: 1 },
+        }, {
+            new: true,
+            select: "comments totalComments title image _id", // Only select needed fields
+        });
         if (!list)
             return res.status(404).json({ error: "List not found" });
-        const newComment = { text, createdBy, createdAt: new Date(), image };
-        const enrichedComment = await enrichListComment(newComment);
-        list.comments = list.comments || [];
-        list.comments.push(newComment);
-        list.totalComments = list.comments.length;
-        await list.save();
-        const { partner } = await getOwnerAndPartner(createdBy);
-        if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], NotificationMessages.List.Comment, {
-                listTitle: list.title,
-                commenterName: enrichedComment.createdByDetails?.name ?? "Someone",
-                text,
-            }, {
-                type: NotificationData.List,
-                listId: list._id,
-                isComment: true,
-                image: image ?? list.image ?? undefined,
-            }, [partner.userId], String(list._id));
-        }
+        // Send response immediately
         res.status(201).json({
             comments: list.comments,
             totalComments: list.totalComments,
+        });
+        // Handle notifications asynchronously (fire and forget)
+        setImmediate(async () => {
+            try {
+                const enrichedComment = await enrichListComment(newComment);
+                const { partner } = await getOwnerAndPartner(createdBy);
+                if (partner?.notificationToken) {
+                    await sendExpoPush([partner.notificationToken], NotificationMessages.List.Comment, {
+                        listTitle: list.title,
+                        commenterName: enrichedComment.createdByDetails?.name ?? "Someone",
+                        text,
+                    }, {
+                        type: NotificationData.List,
+                        listId: list._id,
+                        isComment: true,
+                        image: image ?? list.image ?? undefined,
+                    }, [partner.userId], String(list._id));
+                }
+            }
+            catch (notifErr) {
+                console.error("List notification error:", notifErr);
+            }
         });
     }
     catch (err) {
@@ -296,16 +307,34 @@ router.post("/:id/comment", async (req, res) => {
         res.status(500).json({ error: err.message || "Failed to add comment" });
     }
 });
-/* ------------------------ GET COMMENTS ------------------------ */
+/* ------------------------ GET COMMENTS - OPTIMIZED ------------------------ */
 router.get("/:id/comments", async (req, res) => {
     try {
-        const list = await Lists.findById(req.params.id).lean();
+        // Only select comments and totalComments fields for better performance
+        const list = await Lists.findById(req.params.id)
+            .select("comments totalComments")
+            .lean();
         if (!list)
             return res.status(404).json({ error: "List not found" });
-        const comments = await Promise.all((list.comments || []).map(enrichListComment));
-        await Lists.findByIdAndUpdate(list._id, {
-            $set: { totalComments: comments.length },
+        // Set cache headers for better performance
+        res.set({
+            "Cache-Control": "private, max-age=30", // Cache for 30 seconds
+            ETag: `"${list._id}-${list.comments?.length || 0}"`,
         });
+        const comments = await Promise.all((list.comments || []).map(enrichListComment));
+        // Only update totalComments if it's different (avoid unnecessary writes)
+        if (list.totalComments !== comments.length) {
+            setImmediate(async () => {
+                try {
+                    await Lists.findByIdAndUpdate(list._id, {
+                        $set: { totalComments: comments.length },
+                    });
+                }
+                catch (updateErr) {
+                    console.error("Update totalComments error:", updateErr);
+                }
+            });
+        }
         res.json({ comments, totalComments: comments.length });
     }
     catch (err) {

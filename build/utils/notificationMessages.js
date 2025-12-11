@@ -82,39 +82,23 @@ export const NotificationMessages = {
         },
         Comment: (props) => {
             const cleanText = props.text?.trim();
-            const showText = cleanText ? `: "${cleanText}"` : "";
-            const variants = [
-                `💬📝 ${props.commenterName} commented on "${props.taskTitle}"${showText}`,
-                `👀💡 New comment from ${props.commenterName} on "${props.taskTitle}"${showText}`,
-                `📢📝 "${props.taskTitle}" got a comment from ${props.commenterName}${showText}`,
-                `⚡👀 Heads up! ${props.commenterName} left a note on "${props.taskTitle}"${showText}`,
-                `✨💬 ${props.commenterName} shared thoughts on "${props.taskTitle}"${showText}`,
-                `🚀📝 Update: "${props.taskTitle}" has a new comment by ${props.commenterName}${showText}`,
-                `💡📢 "${props.taskTitle}" commentary incoming from ${props.commenterName}${showText}`,
-                `👀💬 Ping! ${props.commenterName} commented on "${props.taskTitle}"${showText}`,
-                `⚡📝 "${props.taskTitle}" received feedback from ${props.commenterName}${showText}`,
-                `🔥💡 ${props.commenterName} left insights on "${props.taskTitle}"${showText}`,
-            ];
-            const body = variants[Math.floor(Math.random() * variants.length)];
-            return { title: `💬⚡ Task Comment`, body };
+            const truncatedText = cleanText && cleanText.length > 50
+                ? cleanText.substring(0, 50) + "..."
+                : cleanText;
+            return {
+                title: `💬 ${props.commenterName}`,
+                body: truncatedText || `Commented on "${props.taskTitle}"`,
+            };
         },
         SubtaskComment: (props) => {
             const cleanText = props.text?.trim();
-            const showText = cleanText ? `: "${cleanText}"` : "";
-            const variants = [
-                `💡📝 ${props.commenterName} commented on "${props.subtaskTitle}" in "${props.taskTitle}"${showText}`,
-                `⚡👀 "${props.subtaskTitle}" has a new comment from ${props.commenterName}${showText}`,
-                `🚀💬 Heads-up! ${props.commenterName} left feedback on "${props.subtaskTitle}"${showText}`,
-                `✨📝 "${props.subtaskTitle}" received a note from ${props.commenterName}${showText}`,
-                `📢💡 Comment alert: "${props.subtaskTitle}" got a remark from ${props.commenterName}${showText}`,
-                `👀📝 ${props.commenterName} chimed in on "${props.subtaskTitle}"${showText}`,
-                `⚡💬 "${props.subtaskTitle}" now has commentary by ${props.commenterName}${showText}`,
-                `🔥👀 Ping! ${props.commenterName} commented on "${props.subtaskTitle}"${showText}`,
-                `💡📢 FYI: "${props.subtaskTitle}" has a new remark from ${props.commenterName}${showText}`,
-                `🚨📝 "${props.subtaskTitle}" feedback alert from ${props.commenterName}${showText}`,
-            ];
-            const body = variants[Math.floor(Math.random() * variants.length)];
-            return { title: `💡⚡ Subtask Comment`, body };
+            const truncatedText = cleanText && cleanText.length > 50
+                ? cleanText.substring(0, 50) + "..."
+                : cleanText;
+            return {
+                title: `💬 ${props.commenterName}`,
+                body: truncatedText || `Commented on "${props.subtaskTitle}"`,
+            };
         },
     },
     Profile: {
@@ -224,16 +208,13 @@ export const NotificationMessages = {
         },
         Comment: (props) => {
             const cleanText = props.text?.trim();
-            const showText = cleanText ? `: "${cleanText}"` : "";
-            const variants = [
-                `💬✨ ${props.commenterName} commented on "${props.listTitle}"${showText}`,
-                `👀💡 New comment from ${props.commenterName} on "${props.listTitle}"${showText}`,
-                `🚀📢 "${props.listTitle}" got a comment from ${props.commenterName}${showText}`,
-                `⚡📝 Heads-up! ${props.commenterName} left a note on "${props.listTitle}"${showText}`,
-                `💜🌟 ${props.commenterName} shared thoughts on "${props.listTitle}"${showText}`,
-            ];
-            const body = variants[Math.floor(Math.random() * variants.length)];
-            return { title: `💬🎯 List Comment`, body };
+            const truncatedText = cleanText && cleanText.length > 50
+                ? cleanText.substring(0, 50) + "..."
+                : cleanText;
+            return {
+                title: `💬 ${props.commenterName}`,
+                body: truncatedText || `Commented on "${props.listTitle}"`,
+            };
         },
         ItemStatus: (props) => {
             const variants = [
@@ -283,16 +264,13 @@ export const NotificationMessages = {
         },
         Comment: (props) => {
             const cleanText = props.text?.trim();
-            const showText = cleanText ? `: "${cleanText}"` : "";
-            const variants = [
-                `💬✨ ${props.commenterName} commented on "${props.noteTitle}"${showText}`,
-                `👀💡 New comment from ${props.commenterName} on "${props.noteTitle}"${showText}`,
-                `🚀📢 "${props.noteTitle}" got a comment from ${props.commenterName}${showText}`,
-                `⚡📝 Heads-up! ${props.commenterName} left a note on "${props.noteTitle}"${showText}`,
-                `💜🌟 ${props.commenterName} shared thoughts on "${props.noteTitle}"${showText}`,
-            ];
-            const body = variants[Math.floor(Math.random() * variants.length)];
-            return { title: `💬🎯 Note Comment`, body };
+            const truncatedText = cleanText && cleanText.length > 50
+                ? cleanText.substring(0, 50) + "..."
+                : cleanText;
+            return {
+                title: `💬 ${props.commenterName}`,
+                body: truncatedText || `Commented on "${props.noteTitle}"`,
+            };
         },
         Pinned: (props) => {
             const variants = [
@@ -342,16 +320,13 @@ export const NotificationMessages = {
         },
         Comment: (props) => {
             const cleanText = props.text?.trim();
-            const showText = cleanText ? `: "${cleanText}"` : "";
-            const variants = [
-                `💬🎯 ${props.commenterName} commented on "${props.videoTitle}"${showText}`,
-                `👀✨ New comment from ${props.commenterName} on "${props.videoTitle}"${showText}`,
-                `🚀💡 "${props.videoTitle}" got a comment from ${props.commenterName}${showText}`,
-                `⚡📢 Heads-up! ${props.commenterName} left a note on "${props.videoTitle}"${showText}`,
-                `💜🔥 ${props.commenterName} shared thoughts on "${props.videoTitle}"${showText}`,
-            ];
-            const body = variants[Math.floor(Math.random() * variants.length)];
-            return { title: `💬🎬 Video Comment`, body };
+            const truncatedText = cleanText && cleanText.length > 50
+                ? cleanText.substring(0, 50) + "..."
+                : cleanText;
+            return {
+                title: `💬 ${props.commenterName}`,
+                body: truncatedText || `Commented on "${props.videoTitle}"`,
+            };
         },
     },
 };
