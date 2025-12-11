@@ -95,8 +95,10 @@ export function initCron() {
                     timeString: timeString,
                   },
                   {
-                    type: NotificationData.Task,
+                    type: "subtask_reminder",
                     taskId: task._id,
+                    subtaskId: subtask._id,
+                    userId: task.createdBy,
                     isActive: task.status === TaskStatus.Active,
                   },
                   [],

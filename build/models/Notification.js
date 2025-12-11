@@ -5,5 +5,6 @@ const NotificationSchema = new mongoose.Schema({
     data: { type: Object, default: {} },
     toUserIds: { type: [String], required: true }, // list of userIds that received this notification
     readBy: { type: [String], default: [] }, // userIds who have read it
+    groupId: { type: String, required: false }, // for grouping related notifications
 }, { timestamps: true });
 export default mongoose.model("Notification", NotificationSchema);

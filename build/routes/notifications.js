@@ -4,6 +4,14 @@ import Notification from "../models/Notification.js";
 export async function sendExpoPush(expoTokens = [], message, messageProps, data = {}, toUserIds = [], groupId) {
     if (!expoTokens.length)
         return;
+    // Validate expo tokens format
+    const validTokens = expoTokens.filter((token) => token &&
+        typeof token === "string" &&
+        token.startsWith("ExponentPushToken["));
+    if (!validTokens.length) {
+        console.warn("No valid Expo push tokens provided");
+        return;
+    }
     // Resolve title and body
     let title;
     let body;
@@ -16,26 +24,70 @@ export async function sendExpoPush(expoTokens = [], message, messageProps, data 
         title = message;
         body = messageProps; // if passing string directly
     }
-    const messages = expoTokens.map((token) => ({
+    // Handle grouped comment notifications
+    if (groupId && data.isComment) {
+        await handleGroupedCommentNotification(validTokens, title, body, data, toUserIds, groupId);
+        return;
+    }
+    const messages = validTokens.map((token) => ({
         to: token,
         sound: "default",
-        title,
-        body,
+        title: title.substring(0, 100), // Limit title length
+        body: body.substring(0, 200), // Limit body length
         data,
+        priority: "high",
         ios: data.type ? { threadId: data.type } : undefined,
         android: {
             channelId: data.type,
+            priority: "high",
             ...(data.type ? { group: data.type } : {}),
+            ...(groupId ? { tag: groupId } : {}), // Use tag for grouping on Android
         },
         richContent: { image: data.image, video: data?.videoData?.url },
+        // Add category identifier to enable action buttons
+        ...(data.type === "subtask_reminder"
+            ? { categoryId: "subtask_reminder" }
+            : {}),
+        ...(data.isComment && data.type === "task"
+            ? { categoryId: "task_comment" }
+            : {}),
+        ...(data.isComment && data.type === "note"
+            ? { categoryId: "note_comment" }
+            : {}),
+        ...(data.isComment && data.type === "list"
+            ? { categoryId: "list_comment" }
+            : {}),
+        ...(data.isComment && data.type === "video"
+            ? { categoryId: "video_comment" }
+            : {}),
+        // Fallback for any other comment types
+        ...(data.isComment && !["task", "note", "list", "video"].includes(data.type)
+            ? { categoryId: "comment" }
+            : {}),
     }));
     try {
-        // Send push
-        await fetch("https://exp.host/--/api/v2/push/send", {
+        // Send push with retry mechanism
+        const response = await fetch("https://exp.host/--/api/v2/push/send", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            },
             body: JSON.stringify(messages),
         });
+        if (!response.ok) {
+            throw new Error(`Push notification failed: ${response.status} ${response.statusText}`);
+        }
+        const result = await response.json();
+        // Log any errors from Expo
+        if (result.data) {
+            result.data.forEach((item, index) => {
+                if (item.status === "error") {
+                    console.error(`Push notification error for token ${validTokens[index]}:`, item.message);
+                }
+            });
+        }
+        // Store notification in database only if push was successful
         if (title && body && toUserIds.length) {
             await Notification.create({
                 title,
@@ -48,6 +100,150 @@ export async function sendExpoPush(expoTokens = [], message, messageProps, data 
     }
     catch (err) {
         console.error("Error sending Expo push:", err);
+        // Don't throw error to prevent breaking the main flow
+    }
+}
+// Handle grouped comment notifications (like WhatsApp)
+async function handleGroupedCommentNotification(expoTokens, title, body, data, toUserIds, groupId) {
+    try {
+        // Check for recent notifications in the same group (within last 5 minutes)
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const recentNotifications = await Notification.find({
+            groupId,
+            toUserIds: { $in: toUserIds },
+            createdAt: { $gte: fiveMinutesAgo },
+            "data.isComment": true,
+        })
+            .sort({ createdAt: -1 })
+            .limit(10); // Limit to prevent memory issues
+        let finalTitle = title;
+        let finalBody = body;
+        let commentCount = 1;
+        if (recentNotifications.length > 0) {
+            // Group the comments
+            commentCount = recentNotifications.length + 1;
+            // Extract the base title (e.g., "Task Comment", "Note Comment")
+            const baseTitle = title;
+            // Create grouped message
+            if (commentCount === 2) {
+                finalTitle = baseTitle;
+                finalBody = `${recentNotifications[0].body}\n${body}`;
+            }
+            else {
+                finalTitle = `${baseTitle} (${commentCount} messages)`;
+                // Show last 2 comments + count
+                const lastComment = recentNotifications[0].body;
+                finalBody = `${lastComment}\n${body}`;
+                if (commentCount > 2) {
+                    finalBody = `${commentCount - 2} earlier messages\n${finalBody}`;
+                }
+            }
+            // Delete old notifications in this group to avoid duplicates
+            await Notification.deleteMany({
+                groupId,
+                toUserIds: { $in: toUserIds },
+                "data.isComment": true,
+                createdAt: { $gte: fiveMinutesAgo },
+            });
+        }
+        // Send the grouped notification
+        const messages = expoTokens.map((token) => ({
+            to: token,
+            sound: "default",
+            title: finalTitle.substring(0, 100),
+            body: finalBody.substring(0, 200),
+            priority: "high",
+            data: {
+                ...data,
+                commentCount,
+                isGrouped: commentCount > 1,
+            },
+            ios: data.type ? { threadId: groupId } : undefined,
+            android: {
+                channelId: data.type,
+                priority: "high",
+                group: groupId,
+                tag: groupId, // This ensures notifications with same tag replace each other
+            },
+            richContent: { image: data.image, video: data?.videoData?.url },
+            // Add category identifier for comment notifications to enable action buttons
+            ...(data.isComment && data.type === "task"
+                ? { categoryId: "task_comment" }
+                : {}),
+            ...(data.isComment && data.type === "note"
+                ? { categoryId: "note_comment" }
+                : {}),
+            ...(data.isComment && data.type === "list"
+                ? { categoryId: "list_comment" }
+                : {}),
+            ...(data.isComment && data.type === "video"
+                ? { categoryId: "video_comment" }
+                : {}),
+            // Fallback for any other comment types
+            ...(data.isComment &&
+                !["task", "note", "list", "video"].includes(data.type)
+                ? { categoryId: "comment" }
+                : {}),
+        }));
+        const response = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            },
+            body: JSON.stringify(messages),
+        });
+        if (!response.ok) {
+            throw new Error(`Grouped notification failed: ${response.status}`);
+        }
+        // Store the grouped notification
+        await Notification.create({
+            title: finalTitle,
+            body: finalBody,
+            data: {
+                ...data,
+                commentCount,
+                isGrouped: commentCount > 1,
+            },
+            toUserIds,
+            groupId,
+        });
+    }
+    catch (err) {
+        console.error("Error handling grouped comment notification:", err);
+        // Fallback to regular notification with simplified approach
+        try {
+            const messages = expoTokens.map((token) => ({
+                to: token,
+                sound: "default",
+                title: title.substring(0, 100),
+                body: body.substring(0, 200),
+                priority: "high",
+                data,
+                ios: data.type ? { threadId: data.type } : undefined,
+                android: {
+                    channelId: data.type,
+                    priority: "high",
+                    group: data.type,
+                },
+            }));
+            await fetch("https://exp.host/--/api/v2/push/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(messages),
+            });
+            // Store fallback notification
+            await Notification.create({
+                title,
+                body,
+                data,
+                toUserIds,
+                groupId,
+            });
+        }
+        catch (fallbackErr) {
+            console.error("Fallback notification also failed:", fallbackErr);
+        }
     }
 }
 const router = Router();
@@ -59,13 +255,18 @@ router.get("/:userId", async (req, res) => {
         const { userId } = req.params;
         const page = Math.max(Number(req.query.page) || 1, 1);
         const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
-        // Delete notifications older than 7 days
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - 4);
-        const deleted = await Notification.deleteMany({
-            createdAt: { $lt: cutoffDate },
-        });
-        console.log(`Deleted ${deleted.deletedCount} old notifications`);
+        // Delete notifications older than 7 days (run cleanup less frequently)
+        const shouldCleanup = Math.random() < 0.1; // 10% chance to run cleanup
+        if (shouldCleanup) {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - 7); // Keep for 7 days instead of 4
+            const deleted = await Notification.deleteMany({
+                createdAt: { $lt: cutoffDate },
+            });
+            if (deleted.deletedCount > 0) {
+                console.log(`Cleaned up ${deleted.deletedCount} old notifications`);
+            }
+        }
         const filter = { toUserIds: userId };
         const totalCount = await Notification.countDocuments(filter);
         const totalPages = Math.ceil(totalCount / pageSize);
