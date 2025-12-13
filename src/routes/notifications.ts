@@ -102,23 +102,23 @@ export async function sendExpoPush<T = any>(
     richContent: { image: data.image, video: data?.videoData?.url },
     // Add category identifier to enable action buttons
     ...(data.type === "subtask_reminder"
-      ? { categoryId: "subtask_reminder" }
+      ? { categoryIdentifier: "subtask_reminder" }
       : {}),
     ...(data.isComment && data.type === "task"
-      ? { categoryId: "task_comment" }
+      ? { categoryIdentifier: "task_comment" }
       : {}),
     ...(data.isComment && data.type === "note"
-      ? { categoryId: "note_comment" }
+      ? { categoryIdentifier: "note_comment" }
       : {}),
     ...(data.isComment && data.type === "list"
-      ? { categoryId: "list_comment" }
+      ? { categoryIdentifier: "list_comment" }
       : {}),
     ...(data.isComment && data.type === "video"
-      ? { categoryId: "video_comment" }
+      ? { categoryIdentifier: "video_comment" }
       : {}),
     // Fallback for any other comment types
     ...(data.isComment && !["task", "note", "list", "video"].includes(data.type)
-      ? { categoryId: "comment" }
+      ? { categoryIdentifier: "comment" }
       : {}),
   }));
 
@@ -242,21 +242,21 @@ async function handleGroupedCommentNotification(
       richContent: { image: data.image, video: data?.videoData?.url },
       // Add category identifier for comment notifications to enable action buttons
       ...(data.isComment && data.type === "task"
-        ? { categoryId: "task_comment" }
+        ? { categoryIdentifier: "task_comment" }
         : {}),
       ...(data.isComment && data.type === "note"
-        ? { categoryId: "note_comment" }
+        ? { categoryIdentifier: "note_comment" }
         : {}),
       ...(data.isComment && data.type === "list"
-        ? { categoryId: "list_comment" }
+        ? { categoryIdentifier: "list_comment" }
         : {}),
       ...(data.isComment && data.type === "video"
-        ? { categoryId: "video_comment" }
+        ? { categoryIdentifier: "video_comment" }
         : {}),
       // Fallback for any other comment types
       ...(data.isComment &&
       !["task", "note", "list", "video"].includes(data.type)
-        ? { categoryId: "comment" }
+        ? { categoryIdentifier: "comment" }
         : {}),
     }));
 
