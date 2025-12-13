@@ -1,16 +1,17 @@
 import { Router } from "express";
 import fetch from "node-fetch";
 import Notification from "../models/Notification.js";
+import { NotificationData, NotificationCategory, } from "../enum/notification.js";
 // Helper functions for notification grouping
 function getItemName(data) {
     if (data.taskId)
-        return "task";
+        return NotificationData.Task;
     if (data.noteId)
-        return "note";
+        return NotificationData.Note;
     if (data.listId)
-        return "list";
+        return NotificationData.List;
     if (data.videoData)
-        return "video";
+        return NotificationData.Video;
     return "item";
 }
 function getItemType(type) {
@@ -55,42 +56,50 @@ export async function sendExpoPush(expoTokens = [], message, messageProps, data 
         await handleGroupedCommentNotification(validTokens, title, body, data, toUserIds, groupId);
         return;
     }
-    const messages = validTokens.map((token) => ({
-        to: token,
-        sound: "default",
-        title: title.substring(0, 100), // Limit title length
-        body: body.substring(0, 200), // Limit body length
-        data,
-        priority: "high",
-        ios: data.type ? { threadId: data.type } : undefined,
-        android: {
-            channelId: data.type,
+    const messages = validTokens.map((token) => {
+        // Determine category identifier for action buttons
+        let categoryIdentifier = "";
+        if (data.type === NotificationData.SubtaskReminder) {
+            categoryIdentifier = NotificationCategory.SubtaskReminder;
+        }
+        else if (data.isComment) {
+            switch (data.type) {
+                case NotificationData.Task:
+                    categoryIdentifier = NotificationCategory.TaskComment;
+                    break;
+                case NotificationData.Note:
+                    categoryIdentifier = NotificationCategory.NoteComment;
+                    break;
+                case NotificationData.List:
+                    categoryIdentifier = NotificationCategory.ListComment;
+                    break;
+                case NotificationData.Video:
+                    categoryIdentifier = NotificationCategory.VideoComment;
+                    break;
+                default:
+                    categoryIdentifier = NotificationCategory.Comment;
+            }
+        }
+        const notification = {
+            to: token,
+            sound: "default",
+            title: title.substring(0, 100), // Limit title length
+            body: body.substring(0, 200), // Limit body length
+            data,
             priority: "high",
-            ...(data.type ? { group: data.type } : {}),
-            ...(groupId ? { tag: groupId } : {}), // Use tag for grouping on Android
-        },
-        richContent: { image: data.image, video: data?.videoData?.url },
-        // Add category identifier to enable action buttons
-        ...(data.type === "subtask_reminder"
-            ? { categoryIdentifier: "subtask_reminder" }
-            : {}),
-        ...(data.isComment && data.type === "task"
-            ? { categoryIdentifier: "task_comment" }
-            : {}),
-        ...(data.isComment && data.type === "note"
-            ? { categoryIdentifier: "note_comment" }
-            : {}),
-        ...(data.isComment && data.type === "list"
-            ? { categoryIdentifier: "list_comment" }
-            : {}),
-        ...(data.isComment && data.type === "video"
-            ? { categoryIdentifier: "video_comment" }
-            : {}),
-        // Fallback for any other comment types
-        ...(data.isComment && !["task", "note", "list", "video"].includes(data.type)
-            ? { categoryIdentifier: "comment" }
-            : {}),
-    }));
+            ios: data.type ? { threadId: data.type } : undefined,
+            android: {
+                channelId: data.type,
+                priority: "high",
+                ...(data.type ? { group: data.type } : {}),
+                ...(groupId ? { tag: groupId } : {}), // Use tag for grouping on Android
+            },
+            richContent: { image: data.image, video: data?.videoData?.url },
+            // Add category identifier for action buttons
+            ...(categoryIdentifier ? { categoryIdentifier } : {}),
+        };
+        return notification;
+    });
     try {
         // Send push with retry mechanism
         const response = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -146,18 +155,20 @@ async function handleGroupedCommentNotification(expoTokens, title, body, data, t
         let finalBody = body;
         let commentCount = 1;
         if (recentNotifications.length > 0) {
-            commentCount = recentNotifications.length + 1;
+            // Count new comments since the last notification
+            const mostRecentNotification = recentNotifications[0];
+            const existingNewCount = mostRecentNotification.data?.newCommentCount || 1;
+            commentCount = existingNewCount + 1; // Add this new comment to the count
             // Get the item name from data
             const itemName = getItemName(data);
-            const itemType = getItemType(data.type);
             if (commentCount === 2) {
                 // Show both comments
-                finalTitle = `💬 ${commentCount} comments`;
+                finalTitle = `💬 ${commentCount} new comments`;
                 finalBody = `${recentNotifications[0].body}\n${body}`;
             }
             else {
                 // Show count and latest comment
-                finalTitle = `💬 ${commentCount} comments on ${itemName}`;
+                finalTitle = `💬 ${commentCount} new comments on ${itemName}`;
                 finalBody = `${body}`;
             }
             // Delete old notifications in this group to avoid duplicates
@@ -169,44 +180,50 @@ async function handleGroupedCommentNotification(expoTokens, title, body, data, t
             });
         }
         // Send the grouped notification
-        const messages = expoTokens.map((token) => ({
-            to: token,
-            sound: "default",
-            title: finalTitle.substring(0, 100),
-            body: finalBody.substring(0, 200),
-            priority: "high",
-            data: {
-                ...data,
-                commentCount,
-                isGrouped: commentCount > 1,
-            },
-            ios: data.type ? { threadId: groupId } : undefined,
-            android: {
-                channelId: data.type,
+        const messages = expoTokens.map((token) => {
+            // Determine category identifier for action buttons
+            let categoryIdentifier = "";
+            if (data.isComment) {
+                switch (data.type) {
+                    case NotificationData.Task:
+                        categoryIdentifier = NotificationCategory.TaskComment;
+                        break;
+                    case NotificationData.Note:
+                        categoryIdentifier = NotificationCategory.NoteComment;
+                        break;
+                    case NotificationData.List:
+                        categoryIdentifier = NotificationCategory.ListComment;
+                        break;
+                    case NotificationData.Video:
+                        categoryIdentifier = NotificationCategory.VideoComment;
+                        break;
+                    default:
+                        categoryIdentifier = NotificationCategory.Comment;
+                }
+            }
+            return {
+                to: token,
+                sound: "default",
+                title: finalTitle.substring(0, 100),
+                body: finalBody.substring(0, 200),
                 priority: "high",
-                group: groupId,
-                tag: groupId, // This ensures notifications with same tag replace each other
-            },
-            richContent: { image: data.image, video: data?.videoData?.url },
-            // Add category identifier for comment notifications to enable action buttons
-            ...(data.isComment && data.type === "task"
-                ? { categoryIdentifier: "task_comment" }
-                : {}),
-            ...(data.isComment && data.type === "note"
-                ? { categoryIdentifier: "note_comment" }
-                : {}),
-            ...(data.isComment && data.type === "list"
-                ? { categoryIdentifier: "list_comment" }
-                : {}),
-            ...(data.isComment && data.type === "video"
-                ? { categoryIdentifier: "video_comment" }
-                : {}),
-            // Fallback for any other comment types
-            ...(data.isComment &&
-                !["task", "note", "list", "video"].includes(data.type)
-                ? { categoryIdentifier: "comment" }
-                : {}),
-        }));
+                data: {
+                    ...data,
+                    newCommentCount: commentCount, // Track new comments, not total
+                    isGrouped: commentCount > 1,
+                },
+                ios: data.type ? { threadId: groupId } : undefined,
+                android: {
+                    channelId: data.type,
+                    priority: "high",
+                    group: groupId,
+                    tag: groupId, // This ensures notifications with same tag replace each other
+                },
+                richContent: { image: data.image, video: data?.videoData?.url },
+                // Add category identifier for action buttons
+                ...(categoryIdentifier ? { categoryIdentifier } : {}),
+            };
+        });
         const response = await fetch("https://exp.host/--/api/v2/push/send", {
             method: "POST",
             headers: {
@@ -224,7 +241,7 @@ async function handleGroupedCommentNotification(expoTokens, title, body, data, t
             body: finalBody,
             data: {
                 ...data,
-                commentCount,
+                newCommentCount: commentCount, // Track new comments, not total
                 isGrouped: commentCount > 1,
             },
             toUserIds,
@@ -313,14 +330,13 @@ router.get("/:userId", async (req, res) => {
         const processedNotifications = notifications.map((notification) => {
             if (notification.data?.isComment &&
                 notification.data?.isGrouped &&
-                notification.data?.commentCount > 1) {
+                notification.data?.newCommentCount > 1) {
                 // Improve grouped notification display
                 const itemName = getItemName(notification.data);
-                const itemType = getItemType(notification.data.type);
                 return {
                     ...notification,
-                    title: `💬 ${notification.data.commentCount} comments`,
-                    body: `${notification.data.commentCount} new comments on ${itemName}`,
+                    title: `💬 ${notification.data.newCommentCount} new comments`,
+                    body: `${notification.data.newCommentCount} new comments on ${itemName}`,
                 };
             }
             return notification;

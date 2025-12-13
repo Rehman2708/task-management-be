@@ -3,6 +3,7 @@ import Task from "../models/Task.js";
 import { AssignedTo, Frequency, SubtaskStatus, TaskStatus, } from "../enum/task.js";
 import { sendExpoPush } from "../routes/notifications.js";
 import { getOwnerAndPartner } from "../helper.js";
+import { NotificationData } from "../enum/notification.js";
 import { NotificationMessages } from "../utils/notificationMessages.js";
 // Helper to get tokens for assignment
 async function getTokens(user, assignedTo) {
@@ -68,7 +69,7 @@ export function initCron() {
                                     subtaskTitle: subtask.title,
                                     timeString: timeString,
                                 }, {
-                                    type: "subtask_reminder",
+                                    type: NotificationData.SubtaskReminder,
                                     taskId: task._id,
                                     subtaskId: subtask._id,
                                     userId: task.createdBy,
