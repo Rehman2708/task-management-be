@@ -180,7 +180,14 @@ export const NotificationMessages = {
       changedFields: { field: string; oldValue: string; newValue: string }[];
     }) => {
       const fieldsText = props.changedFields
-        .map((f) => `${f.field} (${f.oldValue} → ${f.newValue})`)
+        .map((f) => {
+          // Don't show image URLs in notification message for privacy
+          if (f.field === "image") {
+            return "profile picture";
+          }
+          // For other fields, show the change details
+          return `${f.field} (${f.oldValue} → ${f.newValue})`;
+        })
         .join(", ");
       const variants = [
         `✨💡 ${props.partnerName} updated their ${fieldsText}. Take a look!`,

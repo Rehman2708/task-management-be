@@ -414,7 +414,7 @@ router.put("/update-profile", async (req, res) => {
           },
           {
             type: NotificationData.Profile,
-            image: image ?? user.image ?? undefined,
+            imageChanged: imageChanged,
           },
           [partner.userId]
         );
