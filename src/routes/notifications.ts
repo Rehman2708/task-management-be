@@ -120,16 +120,20 @@ export async function sendExpoPush<T = any>(
       body: body.substring(0, 200), // Limit body length
       data,
       priority: "high",
-      ios: data.type ? { threadId: data.type } : undefined,
+      ios: {
+        ...(data.type ? { threadId: data.type } : {}),
+        ...(categoryIdentifier ? { categoryId: categoryIdentifier } : {}),
+      },
       android: {
         channelId: data.type,
         priority: "high",
         ...(data.type ? { group: data.type } : {}),
         ...(groupId ? { tag: groupId } : {}), // Use tag for grouping on Android
+        ...(categoryIdentifier ? { categoryId: categoryIdentifier } : {}),
       },
       richContent: { image: data.image, video: data?.videoData?.url },
       // Add category identifier for action buttons
-      ...(categoryIdentifier ? { categoryIdentifier } : {}),
+      ...(categoryIdentifier ? { categoryId: categoryIdentifier } : {}),
     };
 
     return notification;
@@ -192,12 +196,13 @@ async function handleGroupedCommentNotification(
   groupId: string
 ): Promise<void> {
   try {
-    // Check for recent notifications in the same group (within last 10 minutes)
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    // Check for recent notifications in the same group (within last 5 minutes)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
     const recentNotifications = await Notification.find({
       groupId,
       toUserIds: { $in: toUserIds },
-      createdAt: { $gte: tenMinutesAgo },
+      createdAt: { $gte: fiveMinutesAgo },
       "data.isComment": true,
     })
       .sort({ createdAt: -1 })
@@ -232,7 +237,7 @@ async function handleGroupedCommentNotification(
         groupId,
         toUserIds: { $in: toUserIds },
         "data.isComment": true,
-        createdAt: { $gte: tenMinutesAgo },
+        createdAt: { $gte: fiveMinutesAgo },
       });
     }
 
@@ -240,6 +245,7 @@ async function handleGroupedCommentNotification(
     const messages = expoTokens.map((token) => {
       // Determine category identifier for action buttons
       let categoryIdentifier = "";
+
       if (data.isComment) {
         switch (data.type) {
           case NotificationData.Task:
@@ -259,7 +265,7 @@ async function handleGroupedCommentNotification(
         }
       }
 
-      return {
+      const notification = {
         to: token,
         sound: "default",
         title: finalTitle.substring(0, 100),
@@ -270,17 +276,23 @@ async function handleGroupedCommentNotification(
           newCommentCount: commentCount, // Track new comments, not total
           isGrouped: commentCount > 1,
         },
-        ios: data.type ? { threadId: groupId } : undefined,
+        ios: {
+          ...(data.type ? { threadId: groupId } : {}),
+          ...(categoryIdentifier ? { categoryId: categoryIdentifier } : {}),
+        },
         android: {
           channelId: data.type,
           priority: "high",
           group: groupId,
           tag: groupId, // This ensures notifications with same tag replace each other
+          ...(categoryIdentifier ? { categoryId: categoryIdentifier } : {}),
         },
         richContent: { image: data.image, video: data?.videoData?.url },
         // Add category identifier for action buttons
-        ...(categoryIdentifier ? { categoryIdentifier } : {}),
+        ...(categoryIdentifier ? { categoryId: categoryIdentifier } : {}),
       };
+
+      return notification;
     });
 
     const response = await fetch("https://exp.host/--/api/v2/push/send", {
