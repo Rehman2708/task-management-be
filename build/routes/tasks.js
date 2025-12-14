@@ -282,8 +282,10 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
         subtask.status = status;
         subtask.updatedBy = userId;
         subtask.completedAt = status === "Completed" ? new Date() : null;
-        if (typeof task.updateProgress === "function")
+        // Update task status based on all subtasks
+        if (typeof task.updateProgress === "function") {
             task.updateProgress();
+        }
         await task.save();
         const { owner, partner } = await getOwnerAndPartner(userId);
         const actorName = await getDisplayName(userId);
