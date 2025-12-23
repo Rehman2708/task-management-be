@@ -38,10 +38,10 @@ export class FirebaseEmailService {
             // Email template
             const mailOptions = {
                 from: isTestMode
-                    ? '"Task Management App" <noreply@taskapp.com>'
+                    ? '"RMK Task App" <noreply@taskapp.com>'
                     : process.env.GMAIL_USER,
                 to: email,
-                subject: "🔐 Your OTP Code - Task Management App",
+                subject: "🔐 Your OTP Code - RMK Task App",
                 html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 30px;">
@@ -69,7 +69,7 @@ export class FirebaseEmailService {
             </div>
             
             <div style="text-align: center; margin-top: 30px; color: #999; font-size: 12px;">
-              <p>© 2024 Task Management App. Made with ❤️</p>
+              <p>© 2025 RMK Task App. Made with ❤️</p>
             </div>
           </div>
         `,
