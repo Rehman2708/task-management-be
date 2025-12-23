@@ -7,4 +7,8 @@ const NotificationSchema = new mongoose.Schema({
     readBy: { type: [String], default: [] }, // userIds who have read it
     groupId: { type: String, required: false }, // for grouping related notifications
 }, { timestamps: true });
+// Performance indexes for faster queries
+NotificationSchema.index({ toUserIds: 1, createdAt: -1 }); // User notifications
+NotificationSchema.index({ groupId: 1, createdAt: -1 }); // Grouped notifications
+NotificationSchema.index({ createdAt: 1 }); // Cleanup job
 export default mongoose.model("Notification", NotificationSchema);

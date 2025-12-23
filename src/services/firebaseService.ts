@@ -1,8 +1,54 @@
 import nodemailer from "nodemailer";
 
+// Create transporter once at module load for better performance
+let transporter: nodemailer.Transporter | null = null;
+let isTestMode = false;
+
+async function getTransporter() {
+  if (transporter) return transporter;
+
+  // Try Gmail first, fallback to Ethereal for testing
+  if (
+    process.env.GMAIL_USER &&
+    process.env.GMAIL_APP_PASSWORD &&
+    process.env.GMAIL_APP_PASSWORD !== "your-actual-16-char-app-password"
+  ) {
+    // Use Gmail if proper credentials are provided
+    transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+      pool: true, // Use connection pooling
+      maxConnections: 5, // Maximum concurrent connections
+      maxMessages: 100, // Maximum messages per connection
+    });
+  } else {
+    // Use Ethereal for testing (creates temporary test emails)
+    console.log("🧪 Using Ethereal test email service...");
+    const testAccount = await nodemailer.createTestAccount();
+    transporter = nodemailer.createTransport({
+      host: "smtp.ethereal.email",
+      port: 587,
+      secure: false,
+      auth: {
+        user: testAccount.user,
+        pass: testAccount.pass,
+      },
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 50,
+    });
+    isTestMode = true;
+  }
+
+  return transporter;
+}
+
 export class FirebaseEmailService {
   /**
-   * Send OTP email using Nodemailer with Gmail
+   * Send OTP email using Nodemailer with Gmail - OPTIMIZED
    */
   static async sendOTPEmail(
     email: string,
@@ -10,38 +56,7 @@ export class FirebaseEmailService {
     name: string
   ): Promise<boolean> {
     try {
-      let transporter;
-      let isTestMode = false;
-
-      // Try Gmail first, fallback to Ethereal for testing
-      if (
-        process.env.GMAIL_USER &&
-        process.env.GMAIL_APP_PASSWORD &&
-        process.env.GMAIL_APP_PASSWORD !== "your-actual-16-char-app-password"
-      ) {
-        // Use Gmail if proper credentials are provided
-        transporter = nodemailer.createTransport({
-          service: "gmail",
-          auth: {
-            user: process.env.GMAIL_USER,
-            pass: process.env.GMAIL_APP_PASSWORD,
-          },
-        });
-      } else {
-        // Use Ethereal for testing (creates temporary test emails)
-        console.log("🧪 Using Ethereal test email service...");
-        const testAccount = await nodemailer.createTestAccount();
-        transporter = nodemailer.createTransport({
-          host: "smtp.ethereal.email",
-          port: 587,
-          secure: false,
-          auth: {
-            user: testAccount.user,
-            pass: testAccount.pass,
-          },
-        });
-        isTestMode = true;
-      }
+      const emailTransporter = await getTransporter();
 
       // Email template
       const mailOptions = {
@@ -84,7 +99,7 @@ export class FirebaseEmailService {
       };
 
       // Send email
-      const info = await transporter.sendMail(mailOptions);
+      const info = await emailTransporter.sendMail(mailOptions);
 
       if (isTestMode) {
         console.log(

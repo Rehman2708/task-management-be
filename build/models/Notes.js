@@ -13,4 +13,7 @@ const NoteSchema = new mongoose.Schema({
         image: { type: String, required: false },
     },
 }, { timestamps: true });
+// Performance indexes for faster queries
+NoteSchema.index({ createdBy: 1 }); // User lookup
+NoteSchema.index({ pinned: -1, createdAt: -1 }); // Sort optimization
 export default mongoose.model("Notes", NoteSchema);

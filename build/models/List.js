@@ -19,4 +19,7 @@ const ListSchema = new mongoose.Schema({
         image: { type: String, required: false },
     },
 }, { timestamps: true });
+// Performance indexes for faster queries
+ListSchema.index({ createdBy: 1 }); // User lookup
+ListSchema.index({ pinned: -1, createdAt: -1 }); // Sort optimization
 export default mongoose.model("Lists", ListSchema);

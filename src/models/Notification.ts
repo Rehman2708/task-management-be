@@ -12,4 +12,9 @@ const NotificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Performance indexes for faster queries
+NotificationSchema.index({ toUserIds: 1, createdAt: -1 }); // User notifications
+NotificationSchema.index({ groupId: 1, createdAt: -1 }); // Grouped notifications
+NotificationSchema.index({ createdAt: 1 }); // Cleanup job
+
 export default mongoose.model("Notification", NotificationSchema);

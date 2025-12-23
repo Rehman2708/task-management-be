@@ -46,4 +46,8 @@ const NoteSchema = new mongoose.Schema<INote>(
   { timestamps: true }
 );
 
+// Performance indexes for faster queries
+NoteSchema.index({ createdBy: 1 }); // User lookup
+NoteSchema.index({ pinned: -1, createdAt: -1 }); // Sort optimization
+
 export default mongoose.model<INote>("Notes", NoteSchema);

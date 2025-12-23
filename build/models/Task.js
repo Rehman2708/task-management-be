@@ -118,4 +118,9 @@ TaskSchema.methods.updateProgress = function updateProgress() {
     else
         this.status = TaskStatus.Active;
 };
+// Performance indexes for faster queries
+TaskSchema.index({ ownerUserId: 1, status: 1 }); // Active tasks query
+TaskSchema.index({ status: 1, nextDue: 1 }); // Cron job query
+TaskSchema.index({ createdBy: 1 }); // User lookup
+TaskSchema.index({ "subtasks.dueDateTime": 1, status: 1 }); // Reminder queries
 export default mongoose.model("Task", TaskSchema);

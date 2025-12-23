@@ -14,4 +14,8 @@ const VideoSchema = new mongoose.Schema({
     },
     comments: { type: [CommentSchema], default: [] },
 }, { timestamps: true });
+// Performance indexes for faster queries
+VideoSchema.index({ createdBy: 1 }); // User lookup
+VideoSchema.index({ partnerWatched: 1, viewedAt: 1 }); // Cleanup job
+VideoSchema.index({ createdAt: -1 }); // Sort optimization
 export default mongoose.model("Video", VideoSchema);

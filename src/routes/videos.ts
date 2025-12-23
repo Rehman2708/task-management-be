@@ -80,7 +80,7 @@ async function enrichVideo(video: IVideo) {
 /* ------------------------------- APIs ------------------------------------ */
 
 /**
- * GET /videos/:ownerUserId?page=1&pageSize=10
+ * GET /videos/:ownerUserId?page=1&pageSize=10 - OPTIMIZED
  */
 router.get(
   "/:ownerUserId",
@@ -97,12 +97,6 @@ router.get(
       const { ownerUserId } = req.params;
       const page = Math.max(Number(req.query.page) || 1, 1);
       const pageSize = Math.max(Number(req.query.pageSize) || 10, 1);
-      // remove video seen and older than 24 hrs
-      // const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      // await Video.deleteMany({
-      //   partnerWatched: true,
-      //   viewedAt: { $lte: cutoff },
-      // });
 
       const owner = await User.findOne({ userId: ownerUserId }).lean<IUser>();
       const partnerUserId = owner?.partnerUserId;
@@ -112,28 +106,28 @@ router.get(
         },
       };
 
-      const totalCount = await Video.countDocuments(filter);
+      // Run count and find queries in parallel for better performance
+      const [totalCount, videos] = await Promise.all([
+        Video.countDocuments(filter),
+        Video.find(filter)
+          .sort({ partnerWatched: 1, createdAt: -1 })
+          .skip((page - 1) * pageSize)
+          .limit(pageSize)
+          .lean<IVideo[]>(),
+      ]);
+
       const totalPages = Math.ceil(totalCount / pageSize);
 
-      const videoIds = (
-        await Video.find(filter)
-          .sort({ partnerWatched: 1, createdAt: -1 })
-          .select("_id")
-          .lean()
-      ).map((v) => v._id);
-
-      const pagedIds = videoIds.slice((page - 1) * pageSize, page * pageSize);
-      const videos = await Video.find({ _id: { $in: pagedIds } }).lean<
-        IVideo[]
-      >();
-
+      // Batch enrich videos
       const enrichedVideos = await Promise.all(videos.map(enrichVideo));
 
-      const sortedVideos = pagedIds.map((id) =>
-        enrichedVideos.find((v) => v?._id?.equals(id))
-      );
+      // Set cache headers
+      res.set({
+        "Cache-Control": "private, max-age=120", // Cache for 2 minutes
+        ETag: `"videos-${ownerUserId}-${page}-${totalCount}"`,
+      });
 
-      res.json({ videos: sortedVideos, totalPages, currentPage: page });
+      res.json({ videos: enrichedVideos, totalPages, currentPage: page });
     } catch (err: any) {
       console.error("Error fetching videos:", err);
       res.status(500).json({ error: err.message || "Failed to fetch videos" });
