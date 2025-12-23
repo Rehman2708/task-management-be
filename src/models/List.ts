@@ -34,7 +34,7 @@ const ListSchema = new mongoose.Schema<IList>(
   {
     image: { type: String },
     title: { type: String, required: true },
-    description: { type: String, required: true },
+    description: { type: String, required: false },
     items: [
       {
         text: { type: String, required: true },
