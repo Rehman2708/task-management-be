@@ -12,7 +12,7 @@ import notificationRoutes from "./routes/notifications.js";
 import serverRoutes from "./routes/server.js";
 import listsRoutes from "./routes/lists.js";
 import uploadRoutes from "./routes/uploads.js";
-// Cron job
+// Cron jobs
 import { initCron } from "./jobs/taskScheduler.js";
 import { deleteVideos } from "./jobs/deleteOldVideos.js";
 const app = express();
@@ -39,8 +39,8 @@ app.get("/", (_req, res) => res.json({ ok: true }));
 const port = process.env.PORT || 8000;
 app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
-    // Initialize cron job
+    // Initialize cron jobs
     initCron();
     deleteVideos();
-    console.log("Task cron job initialized");
+    console.log("Cron jobs initialized: tasks, video cleanup");
 });

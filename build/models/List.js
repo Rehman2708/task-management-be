@@ -3,7 +3,7 @@ import { CommentSchema } from "./Task.js";
 const ListSchema = new mongoose.Schema({
     image: { type: String },
     title: { type: String, required: true },
-    description: { type: String, required: true },
+    description: { type: String, required: false },
     items: [
         {
             text: { type: String, required: true },

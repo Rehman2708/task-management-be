@@ -95,8 +95,10 @@ export function initCron() {
                     timeString: timeString,
                   },
                   {
-                    type: NotificationData.Task,
+                    type: NotificationData.SubtaskReminder,
                     taskId: task._id,
+                    subtaskId: subtask._id,
+                    userId: task.createdBy,
                     isActive: task.status === TaskStatus.Active,
                   },
                   [],
@@ -113,22 +115,21 @@ export function initCron() {
               subtask.completedAt = due;
               updated = true;
             } else {
-              allExpired = false;
               allDone = false;
             }
           } else if (subtask.status === SubtaskStatus.Completed) {
-            allExpired = false;
+            // Subtask is completed - still counts as "done" for task completion
           } else {
+            // Any other status means task is not fully done
             allDone = false;
           }
         }
 
-        if (allDone) {
-          task.status = TaskStatus.Completed;
-          updated = true;
-        } else if (allExpired) {
-          task.status = TaskStatus.Expired;
-          updated = true;
+        // Use the task's updateProgress method for consistent status logic
+        if (updated) {
+          if (typeof (task as any).updateProgress === "function") {
+            (task as any).updateProgress();
+          }
         }
 
         if (updated) {
