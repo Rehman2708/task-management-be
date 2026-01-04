@@ -9,6 +9,21 @@ import { NotificationMessages } from "../utils/notificationMessages.js";
 import { deleteFromS3 } from "./uploads.js";
 const router = Router();
 /* ----------------------------- Helper Functions ---------------------------- */
+const sortSubtasksByDueTime = (subtasks) => {
+    if (!Array.isArray(subtasks))
+        return subtasks;
+    return [...subtasks].sort((a, b) => {
+        // Handle null/undefined due dates - put them at the end
+        if (!a.dueDateTime && !b.dueDateTime)
+            return 0;
+        if (!a.dueDateTime)
+            return 1;
+        if (!b.dueDateTime)
+            return -1;
+        // Sort by due date/time ascending (earliest first)
+        return (new Date(a.dueDateTime).getTime() - new Date(b.dueDateTime).getTime());
+    });
+};
 const getDisplayName = async (userId) => {
     if (!userId)
         return "Someone";
@@ -65,18 +80,20 @@ const enrichTask = async (task) => {
         modified = true;
         // Enrich task comments
         for (let i = 0; i < task.comments.length; i++) {
-            task.comments[i] = await enrichComment(task.comments[i], "by");
+            task.comments[i] = await enrichComment(task.comments[i]);
         }
     }
-    // Count subtask comments
+    // Count subtask comments and sort subtasks by due time
     if (Array.isArray(task.subtasks)) {
+        // Sort subtasks by due time
+        task.subtasks = sortSubtasksByDueTime(task.subtasks);
         for (let i = 0; i < task.subtasks.length; i++) {
             const subtask = task.subtasks[i];
             if (Array.isArray(subtask.comments)) {
                 subtask.totalComments = subtask.comments.length;
                 modified = true;
                 for (let j = 0; j < subtask.comments.length; j++) {
-                    subtask.comments[j] = await enrichComment(subtask.comments[j], "createdBy");
+                    subtask.comments[j] = await enrichComment(subtask.comments[j]);
                 }
             }
         }
@@ -108,6 +125,10 @@ router.get("/:ownerUserId", async (req, res) => {
             .lean();
         const enrichedTasks = await Promise.all(tasks.map((t) => {
             t.totalComments = t.comments.length;
+            // Sort subtasks by due time when retrieving (lean objects allow direct assignment)
+            if (t.subtasks && Array.isArray(t.subtasks)) {
+                t.subtasks = sortSubtasksByDueTime(t.subtasks);
+            }
             return enrichCreatedByDetails(t);
         }));
         res.json(enrichedTasks);
@@ -140,6 +161,10 @@ router.get("/history/:ownerUserId", async (req, res) => {
             .lean();
         const enrichedTasks = await Promise.all(tasks.map((t) => {
             t.totalComments = t.comments.length;
+            // Sort subtasks by due time when retrieving (lean objects allow direct assignment)
+            if (t.subtasks && Array.isArray(t.subtasks)) {
+                t.subtasks = sortSubtasksByDueTime(t.subtasks);
+            }
             return enrichCreatedByDetails(t);
         }));
         res.json({
@@ -169,7 +194,9 @@ router.post("/", async (req, res) => {
             completedAt: null,
             comments: [],
         }));
-        const { owner, partner } = await getOwnerAndPartner(createdBy);
+        // Sort subtasks by due time
+        const sortedSubtasks = sortSubtasksByDueTime(formattedSubtasks);
+        const { partner } = await getOwnerAndPartner(createdBy);
         const task = await Task.create({
             title,
             image: image || "",
@@ -179,7 +206,7 @@ router.post("/", async (req, res) => {
             assignedTo: assignedTo || "Both",
             priority: priority || "Medium",
             frequency: frequency || "Once",
-            subtasks: formattedSubtasks,
+            subtasks: sortedSubtasks,
             status: TaskStatus.Active,
         });
         const creatorName = await getDisplayName(task.createdBy);
@@ -208,6 +235,10 @@ router.get("/task/:id", async (req, res) => {
         const task = await Task.findById(req.params.id).lean();
         if (!task)
             return res.status(404).json({ error: "Task not found" });
+        // Sort subtasks by due time (lean objects allow direct assignment)
+        if (task.subtasks && Array.isArray(task.subtasks)) {
+            task.subtasks = sortSubtasksByDueTime(task.subtasks);
+        }
         const enriched = await enrichTask(task);
         res.json(enriched);
     }
@@ -223,12 +254,16 @@ router.put("/:id", async (req, res) => {
         const task = await Task.findById(req.params.id);
         if (!task)
             return res.status(404).json({ error: "Task not found" });
+        // If subtasks are being updated, sort them by due time
+        if (updates.subtasks && Array.isArray(updates.subtasks)) {
+            updates.subtasks = sortSubtasksByDueTime(updates.subtasks);
+        }
         Object.assign(task, updates);
         await task.save();
-        const { owner, partner } = await getOwnerAndPartner(task.createdBy);
+        const { partner } = await getOwnerAndPartner(task.createdBy);
         const updaterName = await getDisplayName(updates?.subtasks?.[0]?.updatedBy);
-        const token = partner?.notificationToken || owner?.notificationToken;
-        const targetId = partner?.userId ?? owner?.userId;
+        const token = partner?.notificationToken;
+        const targetId = partner?.userId;
         if (token) {
             await sendExpoPush([token], NotificationMessages.Task.Updated, { taskTitle: task.title.trim(), updaterName }, {
                 type: NotificationData.Task,
@@ -256,9 +291,9 @@ router.delete("/:id", async (req, res) => {
         }
         if (!task)
             return res.status(404).json({ error: "Task not found" });
-        const { owner, partner } = await getOwnerAndPartner(userId);
+        const { partner } = await getOwnerAndPartner(userId);
         if (partner?.notificationToken) {
-            await sendExpoPush([partner.notificationToken], NotificationMessages.Task.Deleted, { taskTitle: task.title.trim(), ownerName: owner?.name?.trim() ?? "" }, { type: NotificationData.Task, image: task.image ?? undefined }, [partner.userId], String(task._id));
+            await sendExpoPush([partner.notificationToken], NotificationMessages.Task.Deleted, { taskTitle: task.title.trim(), ownerName: "" }, { type: NotificationData.Task, image: task.image ?? undefined }, [partner.userId], String(task._id));
         }
         res.json({ message: "Task deleted successfully" });
     }
@@ -287,7 +322,7 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
             task.updateProgress();
         }
         await task.save();
-        const { owner, partner } = await getOwnerAndPartner(userId);
+        const { partner } = await getOwnerAndPartner(userId);
         const actorName = await getDisplayName(userId);
         if (partner?.notificationToken) {
             await sendExpoPush([partner.notificationToken], NotificationMessages.Task.SubtaskStatusChanged, {
@@ -331,7 +366,7 @@ router.post("/:id/comment", async (req, res) => {
         // Handle notifications asynchronously (fire and forget)
         setImmediate(async () => {
             try {
-                const { owner, partner } = await getOwnerAndPartner(by);
+                const { partner } = await getOwnerAndPartner(by);
                 const commenterName = await getDisplayName(by);
                 if (partner?.notificationToken) {
                     await sendExpoPush([partner.notificationToken], NotificationMessages.Task.Comment, { taskTitle: task.title.trim(), commenterName, text }, {
@@ -388,7 +423,7 @@ router.post("/:id/subtask/:subtaskId/comment", async (req, res) => {
         // Handle notifications asynchronously (fire and forget)
         setImmediate(async () => {
             try {
-                const { owner, partner } = await getOwnerAndPartner(userId);
+                const { partner } = await getOwnerAndPartner(userId);
                 const commenterName = await getDisplayName(userId);
                 if (partner?.notificationToken) {
                     await sendExpoPush([partner.notificationToken], NotificationMessages.Task.SubtaskComment, {

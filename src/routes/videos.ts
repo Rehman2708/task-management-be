@@ -15,13 +15,13 @@ const router = Router();
 
 async function enrichComment(comment: IVideoComment) {
   if (!comment?.createdBy) return comment;
-  const user = await User.findOne({ userId: comment.createdBy }).lean<IUser>();
-  if (user) {
-    comment.createdByDetails = {
-      name: user.name,
-      image: user.image || "",
-    };
-  }
+  // const user = await User.findOne({ userId: comment.createdBy }).lean<IUser>();
+  // if (user) {
+  //   comment.createdByDetails = {
+  //     name: user.name,
+  //     image: user.image || "",
+  //   };
+  // }
   return comment;
 }
 

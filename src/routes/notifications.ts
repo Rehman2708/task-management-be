@@ -15,21 +15,6 @@ function getItemName(data: ExpoPushData): string {
   return "item";
 }
 
-function getItemType(type: string): string {
-  switch (type) {
-    case "task":
-      return "Task";
-    case "note":
-      return "Note";
-    case "list":
-      return "List";
-    case "video":
-      return "Video";
-    default:
-      return "Item";
-  }
-}
-
 export interface ExpoPushData {
   [key: string]: any;
 }
@@ -474,6 +459,38 @@ router.patch("/mark-read", async (req: Request, res: Response) => {
     console.error("Error marking notifications as read:", err);
     res.status(500).json({
       error: err.message || "Failed to mark notifications as read",
+    });
+  }
+});
+
+/**
+ * PATCH /notifications/mark-all-read/:userId
+ * Mark all notifications as read for a specific user
+ */
+router.patch("/mark-all-read/:userId", async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    // Update all notifications for this user that they haven't read yet
+    const result = await Notification.updateMany(
+      {
+        toUserIds: userId,
+        readBy: { $ne: userId },
+      },
+      { $addToSet: { readBy: userId } }
+    );
+
+    res.json({
+      message: "All notifications marked as read",
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (err: any) {
+    console.error("Error marking all notifications as read:", err);
+    res.status(500).json({
+      error: err.message || "Failed to mark all notifications as read",
     });
   }
 });

@@ -11,13 +11,13 @@ const router = Router();
 async function enrichListComment(comment) {
     if (!comment?.createdBy)
         return comment;
-    const user = await User.findOne({ userId: comment.createdBy }).lean();
-    if (user) {
-        comment.createdByDetails = {
-            name: user.name,
-            image: user.image || "",
-        };
-    }
+    // const user = await User.findOne({ userId: comment.createdBy }).lean();
+    // if (user) {
+    //   comment.createdByDetails = {
+    //     name: user.name,
+    //     image: user.image || "",
+    //   };
+    // }
     return comment;
 }
 /* ------------------------ Helper: Enrich List --------------------------- */
