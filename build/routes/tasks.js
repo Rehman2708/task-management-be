@@ -80,7 +80,7 @@ const enrichTask = async (task) => {
         modified = true;
         // Enrich task comments
         for (let i = 0; i < task.comments.length; i++) {
-            task.comments[i] = await enrichComment(task.comments[i]);
+            task.comments[i] = await enrichComment(task.comments[i], "by");
         }
     }
     // Count subtask comments and sort subtasks by due time
@@ -93,7 +93,7 @@ const enrichTask = async (task) => {
                 subtask.totalComments = subtask.comments.length;
                 modified = true;
                 for (let j = 0; j < subtask.comments.length; j++) {
-                    subtask.comments[j] = await enrichComment(subtask.comments[j]);
+                    subtask.comments[j] = await enrichComment(subtask.comments[j], "createdBy");
                 }
             }
         }

@@ -90,7 +90,7 @@ const enrichTask = async (task: any) => {
 
     // Enrich task comments
     for (let i = 0; i < task.comments.length; i++) {
-      task.comments[i] = await enrichComment(task.comments[i]);
+      task.comments[i] = await enrichComment(task.comments[i], "by");
     }
   }
 
@@ -106,7 +106,10 @@ const enrichTask = async (task: any) => {
         modified = true;
 
         for (let j = 0; j < subtask.comments.length; j++) {
-          subtask.comments[j] = await enrichComment(subtask.comments[j]);
+          subtask.comments[j] = await enrichComment(
+            subtask.comments[j],
+            "createdBy"
+          );
         }
       }
     }
