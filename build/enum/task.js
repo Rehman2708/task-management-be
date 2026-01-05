@@ -7,6 +7,7 @@ export var TaskStatus;
 export var SubtaskStatus;
 (function (SubtaskStatus) {
     SubtaskStatus["Pending"] = "Pending";
+    SubtaskStatus["PartiallyComplete"] = "PartiallyComplete";
     SubtaskStatus["Completed"] = "Completed";
     SubtaskStatus["Expired"] = "Expired";
 })(SubtaskStatus || (SubtaskStatus = {}));

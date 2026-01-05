@@ -6,18 +6,23 @@ import { getOwnerAndPartner } from "../helper.js";
 import { NotificationData } from "../enum/notification.js";
 import { NotificationMessages } from "../utils/notificationMessages.js";
 // Helper to get tokens for assignment
-async function getTokens(user, assignedTo) {
+async function getTokensForSubtask(ownerUserId, assignedTo) {
     const tokens = [];
-    const { owner, partner } = await getOwnerAndPartner(user);
+    const userIds = [];
+    const { owner, partner } = await getOwnerAndPartner(ownerUserId);
     if (assignedTo === AssignedTo.Me || assignedTo === AssignedTo.Both) {
-        if (owner?.notificationToken)
+        if (owner?.notificationToken) {
             tokens.push(owner.notificationToken);
+            userIds.push(owner.userId);
+        }
     }
     if (assignedTo === AssignedTo.Partner || assignedTo === AssignedTo.Both) {
-        if (partner?.notificationToken)
+        if (partner?.notificationToken) {
             tokens.push(partner.notificationToken);
+            userIds.push(partner.userId);
+        }
     }
-    return tokens;
+    return { tokens, userIds };
 }
 // Convert minutes to a human-readable string
 function formatTime(minutes) {
@@ -47,7 +52,8 @@ export function initCron() {
                 let allDone = true;
                 let allExpired = true;
                 for (const subtask of task.subtasks) {
-                    if (subtask.status === SubtaskStatus.Pending) {
+                    if (subtask.status === SubtaskStatus.Pending ||
+                        subtask.status === SubtaskStatus.PartiallyComplete) {
                         const due = new Date(subtask.dueDateTime);
                         const diffMinutes = (due.getTime() - now.getTime()) / (1000 * 60);
                         if (!subtask.remindersSent)
@@ -62,26 +68,89 @@ export function initCron() {
                             if (diffMinutes >= r.range[0] &&
                                 diffMinutes <= r.range[1] &&
                                 !subtask.remindersSent.get(key)) {
-                                const tokens = await getTokens(task.createdBy, task.assignedTo);
-                                const timeString = formatTime(diffMinutes);
-                                await sendExpoPush(tokens, NotificationMessages.Task.Reminder, {
-                                    taskTitle: task.title,
-                                    subtaskTitle: subtask.title,
-                                    timeString: timeString,
-                                }, {
-                                    type: NotificationData.SubtaskReminder,
-                                    taskId: task._id,
-                                    subtaskId: subtask._id,
-                                    userId: task.createdBy,
-                                    isActive: task.status === TaskStatus.Active,
-                                }, [], String(task._id));
+                                // For PartiallyComplete subtasks assigned to "Both", only notify the partner who hasn't completed
+                                let { tokens, userIds } = await getTokensForSubtask(task.ownerUserId, subtask.assignedTo);
+                                if (subtask.status === SubtaskStatus.PartiallyComplete &&
+                                    subtask.assignedTo === AssignedTo.Both) {
+                                    // Filter out users who have already completed this subtask
+                                    const { owner, partner } = await getOwnerAndPartner(task.ownerUserId);
+                                    const filteredTokens = [];
+                                    const filteredUserIds = [];
+                                    if (owner &&
+                                        !subtask.completedBy?.includes(owner.userId) &&
+                                        owner.notificationToken) {
+                                        filteredTokens.push(owner.notificationToken);
+                                        filteredUserIds.push(owner.userId);
+                                    }
+                                    if (partner &&
+                                        !subtask.completedBy?.includes(partner.userId) &&
+                                        partner.notificationToken) {
+                                        filteredTokens.push(partner.notificationToken);
+                                        filteredUserIds.push(partner.userId);
+                                    }
+                                    tokens = filteredTokens;
+                                    userIds = filteredUserIds;
+                                }
+                                if (tokens.length > 0) {
+                                    const timeString = formatTime(diffMinutes);
+                                    await sendExpoPush(tokens, NotificationMessages.Task.Reminder, {
+                                        taskTitle: task.title,
+                                        subtaskTitle: subtask.title,
+                                        timeString: timeString,
+                                    }, {
+                                        type: NotificationData.SubtaskReminder,
+                                        taskId: task._id,
+                                        subtaskId: subtask._id,
+                                        userId: task.ownerUserId,
+                                        isActive: task.status === TaskStatus.Active,
+                                    }, userIds, String(task._id));
+                                }
                                 subtask.remindersSent.set(key, true);
                                 updated = true;
                             }
                         }
                         if (due < now) {
+                            // Handle expiration for different statuses
+                            if (subtask.status === SubtaskStatus.PartiallyComplete) {
+                                // PartiallyComplete subtasks that expire should notify incomplete partners
+                                const { owner, partner } = await getOwnerAndPartner(task.ownerUserId);
+                                const incompleteUsers = [];
+                                if (owner && !subtask.completedBy?.includes(owner.userId)) {
+                                    incompleteUsers.push(owner.userId);
+                                }
+                                if (partner && !subtask.completedBy?.includes(partner.userId)) {
+                                    incompleteUsers.push(partner.userId);
+                                }
+                                // Send expiration notification to incomplete users
+                                if (incompleteUsers.length > 0) {
+                                    const tokens = [];
+                                    if (owner &&
+                                        incompleteUsers.includes(owner.userId) &&
+                                        owner.notificationToken) {
+                                        tokens.push(owner.notificationToken);
+                                    }
+                                    if (partner &&
+                                        incompleteUsers.includes(partner.userId) &&
+                                        partner.notificationToken) {
+                                        tokens.push(partner.notificationToken);
+                                    }
+                                    if (tokens.length > 0) {
+                                        await sendExpoPush(tokens, () => ({
+                                            title: "⏰ Subtask Expired",
+                                            body: `"${subtask.title}" has expired (was partially complete)`,
+                                        }), {}, {
+                                            type: NotificationData.SubtaskReminder,
+                                            taskId: task._id,
+                                            subtaskId: subtask._id,
+                                            userId: task.ownerUserId,
+                                            isActive: task.status === TaskStatus.Active,
+                                        }, incompleteUsers, String(task._id));
+                                    }
+                                }
+                            }
                             subtask.status = SubtaskStatus.Expired;
                             subtask.completedAt = due;
+                            // Keep completedBy array intact for audit purposes
                             updated = true;
                         }
                         else {
@@ -89,10 +158,14 @@ export function initCron() {
                         }
                     }
                     else if (subtask.status === SubtaskStatus.Completed) {
-                        // Subtask is completed - still counts as "done" for task completion
+                        // Subtask is completed - counts as "done" for task completion
+                    }
+                    else if (subtask.status === SubtaskStatus.Expired) {
+                        // Expired subtasks don't count as "done" but are "final"
+                        allDone = false;
                     }
                     else {
-                        // Any other status means task is not fully done
+                        // Any other status (shouldn't happen, but safety check)
                         allDone = false;
                     }
                 }
@@ -114,14 +187,17 @@ export function initCron() {
                                 due.setDate(due.getDate() + 7);
                             return {
                                 title: st.title,
+                                assignedTo: st.assignedTo, // Preserve subtask assignment
                                 dueDateTime: due,
                                 status: SubtaskStatus.Pending,
+                                completedBy: [], // Initialize empty completedBy array for new recurring tasks
                                 createdBy: st.createdBy,
                             };
                         });
                         const regenerated = new Task({
                             title: task.title,
-                            assignedTo: task.assignedTo,
+                            ownerUserId: task.ownerUserId,
+                            createdBy: task.createdBy,
                             frequency: task.frequency,
                             subtasks: newSubtasks,
                             status: TaskStatus.Active,

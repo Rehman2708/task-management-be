@@ -6,6 +6,7 @@ export enum TaskStatus {
 
 export enum SubtaskStatus {
   Pending = "Pending",
+  PartiallyComplete = "PartiallyComplete",
   Completed = "Completed",
   Expired = "Expired",
 }

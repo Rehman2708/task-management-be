@@ -90,7 +90,7 @@ const enrichTask = async (task: any) => {
 
     // Enrich task comments
     for (let i = 0; i < task.comments.length; i++) {
-      task.comments[i] = await enrichComment(task.comments[i]);
+      task.comments[i] = await enrichComment(task.comments[i], "by");
     }
   }
 
@@ -106,7 +106,10 @@ const enrichTask = async (task: any) => {
         modified = true;
 
         for (let j = 0; j < subtask.comments.length; j++) {
-          subtask.comments[j] = await enrichComment(subtask.comments[j]);
+          subtask.comments[j] = await enrichComment(
+            subtask.comments[j],
+            "createdBy"
+          );
         }
       }
     }
@@ -220,7 +223,6 @@ router.post("/", async (req, res) => {
       ownerUserId,
       title,
       createdBy,
-      assignedTo,
       priority,
       frequency,
       image,
@@ -237,6 +239,7 @@ router.post("/", async (req, res) => {
       title: s.title || "Untitled",
       dueDateTime: s.dueDateTime ? new Date(s.dueDateTime) : null,
       status: "Pending",
+      assignedTo: s.assignedTo || "Both", // Each subtask must have assignment
       updatedBy: null,
       completedAt: null,
       comments: [],
@@ -252,7 +255,6 @@ router.post("/", async (req, res) => {
       description: description || "",
       ownerUserId,
       createdBy: createdBy || ownerUserId,
-      assignedTo: assignedTo || "Both",
       priority: priority || "Medium",
       frequency: frequency || "Once",
       subtasks: sortedSubtasks,
@@ -268,7 +270,7 @@ router.post("/", async (req, res) => {
         {
           taskTitle: task.title.trim(),
           creatorName,
-          forYou: task.assignedTo !== "Me" ? "for you" : "",
+          forYou: "for you",
         },
         {
           type: NotificationData.Task,
@@ -387,18 +389,125 @@ router.delete("/:id", async (req, res) => {
 router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
   try {
     const { userId, status } = req.body;
-    if (!userId || !["Pending", "Completed"].includes(status))
-      return res.status(400).json({ error: "Invalid userId or status" });
 
+    // Input validation
+    if (!userId || typeof userId !== "string") {
+      return res.status(400).json({ error: "Valid userId is required" });
+    }
+    if (!["Pending", "Completed"].includes(status)) {
+      return res
+        .status(400)
+        .json({ error: "Status must be 'Pending' or 'Completed'" });
+    }
+
+    // Use findOneAndUpdate for atomic operation to prevent race conditions
     const task: any = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ error: "Task not found" });
 
     const subtask = task.subtasks?.id(req.params.subtaskId);
     if (!subtask) return res.status(404).json({ error: "Subtask not found" });
 
-    subtask.status = status;
+    // Check if user is authorized to update this subtask
+    const { owner: taskOwner, partner: taskPartner } = await getOwnerAndPartner(
+      task.ownerUserId
+    );
+
+    if (!taskOwner) {
+      return res.status(404).json({ error: "Task owner not found" });
+    }
+
+    // Check if current user is either the task owner or their partner
+    const isTaskOwner = userId === task.ownerUserId;
+    const isTaskPartner = taskPartner && userId === taskPartner.userId;
+
+    if (!isTaskOwner && !isTaskPartner) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to update this subtask" });
+    }
+
+    // Check subtask assignment permissions
+    // Use subtask assignment if it exists, otherwise fall back to task assignment
+    const effectiveAssignment = subtask.assignedTo || task.assignedTo;
+
+    if (effectiveAssignment === "Me" && !isTaskOwner) {
+      return res
+        .status(403)
+        .json({ error: "This subtask is assigned to the task owner only" });
+    }
+    if (effectiveAssignment === "Partner" && !isTaskPartner) {
+      return res
+        .status(403)
+        .json({ error: "This subtask is assigned to the partner only" });
+    }
+
+    // Validate "Both" assignment when no partner exists
+    if (effectiveAssignment === "Both" && !taskPartner) {
+      return res.status(400).json({
+        error:
+          "Cannot complete 'Both' assigned subtask: No partner found. Please add a partner first or change assignment to 'Me'.",
+      });
+    }
+
+    // Handle completion logic based on assignment type
+    if (status === "Completed") {
+      if (effectiveAssignment === "Both") {
+        // For "Both" assignments, track individual completions
+        if (!subtask.completedBy) subtask.completedBy = [];
+
+        // Add user to completedBy if not already there
+        if (!subtask.completedBy.includes(userId)) {
+          subtask.completedBy.push(userId);
+        }
+
+        // Check if both partners have completed
+        const ownerCompleted = subtask.completedBy.includes(task.ownerUserId);
+        const partnerCompleted =
+          taskPartner && subtask.completedBy.includes(taskPartner.userId);
+
+        // Both partners must complete for "Both" assignments (no single-user completion)
+        if (ownerCompleted && partnerCompleted) {
+          subtask.status = "Completed";
+          subtask.completedAt = new Date();
+        } else {
+          subtask.status = "PartiallyComplete";
+          subtask.completedAt = null; // Keep null until fully completed
+        }
+      } else {
+        // For "Me" or "Partner" assignments, complete immediately
+        subtask.status = "Completed";
+        subtask.completedAt = new Date();
+        if (!subtask.completedBy) subtask.completedBy = [];
+        if (!subtask.completedBy.includes(userId)) {
+          subtask.completedBy.push(userId);
+        }
+      }
+    } else if (status === "Pending") {
+      // Handle reopening subtask
+      if (effectiveAssignment === "Both") {
+        // Remove user from completedBy array
+        if (subtask.completedBy) {
+          subtask.completedBy = subtask.completedBy.filter(
+            (id: string) => id !== userId
+          );
+        }
+
+        // Update status based on remaining completions
+        if (subtask.completedBy && subtask.completedBy.length > 0) {
+          subtask.status = "PartiallyComplete";
+        } else {
+          subtask.status = "Pending";
+        }
+        subtask.completedAt = null;
+      } else {
+        // For "Me" or "Partner" assignments, reopen completely
+        subtask.status = "Pending";
+        subtask.completedAt = null;
+        subtask.completedBy = [];
+      }
+    }
+
     subtask.updatedBy = userId;
-    subtask.completedAt = status === "Completed" ? new Date() : null;
 
     // Update task status based on all subtasks
     if (typeof (task as any).updateProgress === "function") {
@@ -406,26 +515,69 @@ router.patch("/:id/subtask/:subtaskId/status", async (req, res) => {
     }
     await task.save();
 
-    const { partner } = await getOwnerAndPartner(userId);
+    // Send notification to the other person (not the one who updated)
+    const notifyUser = isTaskOwner ? taskPartner : taskOwner;
     const actorName = await getDisplayName(userId);
 
-    if (partner?.notificationToken) {
-      await sendExpoPush(
-        [partner.notificationToken],
-        NotificationMessages.Task.SubtaskStatusChanged,
-        {
+    if (notifyUser?.notificationToken) {
+      let notificationMessage;
+      let messageData;
+
+      if (status === "Completed") {
+        if (effectiveAssignment === "Both") {
+          if (subtask.status === "Completed") {
+            // Both completed - task is fully done
+            notificationMessage =
+              NotificationMessages.Task.SubtaskStatusChanged;
+            messageData = {
+              taskTitle: task.title.trim(),
+              actorName,
+              status: "fully completed",
+              subtaskTitle: subtask.title,
+            };
+          } else {
+            // Partially completed - notify partner it's their turn
+            notificationMessage =
+              NotificationMessages.Task.SubtaskStatusChanged;
+            messageData = {
+              taskTitle: task.title.trim(),
+              actorName,
+              status: "partially completed - your turn",
+              subtaskTitle: subtask.title,
+            };
+          }
+        } else {
+          // Regular completion for Me/Partner assignments
+          notificationMessage = NotificationMessages.Task.SubtaskStatusChanged;
+          messageData = {
+            taskTitle: task.title.trim(),
+            actorName,
+            status: "completed",
+            subtaskTitle: subtask.title,
+          };
+        }
+      } else {
+        // Reopened
+        notificationMessage = NotificationMessages.Task.SubtaskStatusChanged;
+        messageData = {
           taskTitle: task.title.trim(),
           actorName,
-          status: status === "Completed" ? "completed" : "reopened",
+          status: "reopened",
           subtaskTitle: subtask.title,
-        },
+        };
+      }
+
+      await sendExpoPush(
+        [notifyUser.notificationToken],
+        notificationMessage,
+        messageData,
         {
           type: NotificationData.Task,
           taskId: task._id,
           isActive: task.status === TaskStatus.Active,
           image: task.image ?? undefined,
         },
-        [partner.userId],
+        [notifyUser.userId],
         String(task._id)
       );
     }

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "concurrently \"tsc --watch\" \"nodemon build/server.js\"",
     "build": "tsc",
-    "start": "node build/server.js"
+    "start": "node build/server.js",
+    "migrate:subtasks": "node scripts/migrate-subtask-assignments.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.937.0",

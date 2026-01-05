@@ -20,6 +20,15 @@ const SubtaskSchema = new mongoose.Schema({
         enum: Object.values(SubtaskStatus),
         default: SubtaskStatus.Pending,
     },
+    assignedTo: {
+        type: String,
+        enum: Object.values(AssignedTo),
+        required: false, // No default - allows inheritance from task level
+    },
+    completedBy: {
+        type: [String], // Array of userIds who completed this subtask
+        default: [],
+    },
     remindersSent: {
         type: Map,
         of: Boolean,
@@ -67,11 +76,6 @@ const TaskSchema = new mongoose.Schema({
         name: { type: String, required: false },
         image: { type: String, required: false },
     },
-    assignedTo: {
-        type: String,
-        enum: Object.values(AssignedTo),
-        default: AssignedTo.Both,
-    },
     priority: {
         type: String,
         enum: Object.values(Priority),
@@ -86,6 +90,12 @@ const TaskSchema = new mongoose.Schema({
         type: String,
         enum: Object.values(Frequency),
         default: Frequency.Once,
+    },
+    // Task-level assignment for legacy support
+    assignedTo: {
+        type: String,
+        enum: Object.values(AssignedTo),
+        required: false,
     },
     subtasks: { type: [SubtaskSchema], default: [] },
     comments: { type: [CommentSchema], default: [] },
@@ -108,8 +118,15 @@ TaskSchema.methods.updateProgress = function updateProgress() {
             allCompleted = false;
             allFinal = false;
         }
-        if (s.status === SubtaskStatus.Expired)
+        else if (s.status === SubtaskStatus.PartiallyComplete) {
+            allCompleted = false;
+            allFinal = false;
+        }
+        else if (s.status === SubtaskStatus.Expired) {
+            allCompleted = false;
             hasExpired = true;
+        }
+        // SubtaskStatus.Completed doesn't change any flags (counts as completed)
     }
     if (allCompleted)
         this.status = TaskStatus.Completed;
